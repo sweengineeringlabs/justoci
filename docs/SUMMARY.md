@@ -7,6 +7,8 @@
 
 - [Value proposition](./0-ideation/value-proposition.md)
 - [Non-container OCI artifact niche](./0-ideation/non-container-niche.md)
+- [Research notes](./0-ideation/research/README.md)
+  - [OCI Distribution v2 providers](./0-ideation/research/oci-distribution-providers.md)
 
 # Requirements
 
