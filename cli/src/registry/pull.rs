@@ -72,7 +72,11 @@ use sha2::{Digest, Sha256};
 use oci_publish::RegistryAuth;
 
 use super::auth::{
-    extract_bearer_challenge, fetch_bearer_token, resolve_static_auth_header, TOKEN_REQUEST_TIMEOUT,
+    extract_bearer_challenge, fetch_bearer_token, header_value_from_bearer,
+    header_value_from_credentials, AuthManager, TOKEN_REQUEST_TIMEOUT,
+};
+use super::credential_provider::{
+    AnonymousProvider, BasicProvider, BearerProvider, CredentialProvider, EnvProvider,
 };
 use super::error::{preview_body_capped, RegistryPullError, MAX_REGISTRY_BODY_PREVIEW};
 use super::ref_parser::{parse_registry_ref, RefTarget, RegistryRef};
@@ -180,22 +184,29 @@ pub fn pull_anonymous_into_image_dir_with_options(
 }
 
 /// HTTP coordinates threaded through every wire call.
+///
+/// The auth surface is now an [`AuthManager`] that owns:
+///
+/// 1. A chain of [`CredentialProvider`] impls that produce
+///    pre-supplied `Authorization` headers (env, basic, bearer, …).
+///    Walked once per request — the chain is cheap and walking
+///    every request keeps the surface uniform with future
+///    multi-call sessions.
+/// 2. A per-registry bearer cache populated by the OCI 401-realm
+///    dance. Subsequent blob fetches reuse the cached token instead
+///    of re-401-ing on every blob.
 struct WireContext {
     client: Client,
     base_url: String,
+    /// The registry host the cached-bearer cache is keyed on. Today
+    /// every WireContext talks to exactly one registry, so this is
+    /// the single key that's ever used; threading it on the struct
+    /// keeps the call sites in `send_with_retry` from re-deriving
+    /// it on every request.
+    registry_host: String,
     repository: String,
-    /// Static `Authorization` header value, if any. `None` when
-    /// the operator opted into anonymous; the 401-then-token-dance
-    /// can still up-grade an anon request to bearer mid-flight.
-    static_auth: Option<HeaderValue>,
-    /// Cached bearer token from a successful 401-WWW-Authenticate
-    /// dance. Once a registry hands us a bearer for a given pull,
-    /// every subsequent request reuses it — that's the whole
-    /// point of the dance, otherwise every blob would re-401 and
-    /// we'd round-trip the token endpoint per blob. Threaded
-    /// through a `RefCell` because `send_with_retry` takes `&self`
-    /// and the cache mutates.
-    cached_bearer: std::cell::RefCell<Option<HeaderValue>>,
+    /// Resolved provider chain + bearer cache.
+    auth: AuthManager,
 }
 
 impl WireContext {
@@ -203,18 +214,27 @@ impl WireContext {
         parsed: &RegistryRef,
         auth: &RegistryAuth,
     ) -> Result<Self, RegistryPullError> {
-        let static_auth = Some(resolve_static_auth_header(auth)?);
-        Self::build(parsed, static_auth)
+        // Translate `oci_publish::RegistryAuth` into the equivalent
+        // provider chain. This is the bridge between the historical
+        // public signature of `pull_into_image_dir` (still takes a
+        // `&RegistryAuth`) and the new internal trait surface — the
+        // CLI-flag UX is preserved, only the wire-side architecture
+        // changes.
+        let providers = providers_for_registry_auth(auth)?;
+        Self::build(parsed, AuthManager::new(providers))
     }
 
     fn new_anonymous(parsed: &RegistryRef) -> Result<Self, RegistryPullError> {
-        Self::build(parsed, None)
+        // An empty provider chain means `AuthManager::resolve`
+        // returns `Ok(None)` immediately — the wire layer sends no
+        // `Authorization` header. The 401-realm dance still applies
+        // (a registry can up-grade the anonymous call to bearer
+        // mid-flight) and its results land in the AuthManager's
+        // bearer cache the same way.
+        Self::build(parsed, AuthManager::new(vec![]))
     }
 
-    fn build(
-        parsed: &RegistryRef,
-        static_auth: Option<HeaderValue>,
-    ) -> Result<Self, RegistryPullError> {
+    fn build(parsed: &RegistryRef, auth: AuthManager) -> Result<Self, RegistryPullError> {
         let scheme = if env_allows_insecure() {
             "http"
         } else {
@@ -232,14 +252,65 @@ impl WireContext {
             .map_err(|e| RegistryPullError::Auth {
                 source: Box::new(e),
             })?;
+        // Eagerly walk the provider chain once at construction time
+        // so a misconfigured provider (empty Basic creds, broken
+        // Vault) surfaces BEFORE the first wire call. Operators
+        // expect "bad credentials" errors at the CLI boundary, not
+        // disguised as a confusing network 401.
+        //
+        // The result is discarded — we only care about the
+        // `Err`-on-broken-provider gate. The actual credentials are
+        // re-resolved inside `send_with_retry` so the AuthManager
+        // remains the single source of truth on every request.
+        let _ = auth
+            .resolve(&parsed.host)
+            .map_err(|cred_err| RegistryPullError::Auth {
+                source: Box::new(cred_err),
+            })?;
         Ok(WireContext {
             client,
             base_url,
+            registry_host: parsed.host.clone(),
             repository: parsed.repository.clone(),
-            static_auth,
-            cached_bearer: std::cell::RefCell::new(None),
+            auth,
         })
     }
+}
+
+/// Translate the historical `RegistryAuth` enum into the equivalent
+/// chain of [`CredentialProvider`]s. The shape is one provider per
+/// variant — chains with multiple providers are constructed at the
+/// CLI boundary via [`crate::cmd::verify`], not here.
+///
+/// Errors from a misconfigured provider (empty Basic creds, empty
+/// Bearer token) surface here so a refactor that reorders the
+/// translation can't accidentally swallow them.
+fn providers_for_registry_auth(
+    auth: &RegistryAuth,
+) -> Result<Vec<Box<dyn CredentialProvider>>, RegistryPullError> {
+    let provider: Box<dyn CredentialProvider> = match auth {
+        RegistryAuth::Bearer { token } => {
+            let p = BearerProvider::new(token.clone()).map_err(|e| RegistryPullError::Auth {
+                source: Box::new(e),
+            })?;
+            Box::new(p)
+        }
+        RegistryAuth::Basic { username, password } => {
+            let p = BasicProvider::new(username.clone(), password.clone()).map_err(|e| {
+                RegistryPullError::Auth {
+                    source: Box::new(e),
+                }
+            })?;
+            Box::new(p)
+        }
+        RegistryAuth::FromEnv => Box::new(EnvProvider::new()),
+    };
+    // Anchor the chain with AnonymousProvider as a no-op terminator.
+    // Today the chain is always single-provider so this is unused;
+    // having the terminator in place means a future addition (e.g.
+    // a docker-config provider chained AFTER env) doesn't break
+    // when a downstream provider returns Ok(None).
+    Ok(vec![provider, Box::new(AnonymousProvider)])
 }
 
 fn env_allows_insecure() -> bool {
@@ -716,7 +787,7 @@ fn write_index_json(
     Ok(())
 }
 
-/// Send a GET, applying static auth + the 401-then-token-dance.
+/// Send a GET, applying provider-chain auth + the 401-then-token-dance.
 /// Retries on 5xx + transport errors per `MAX_RETRIES`.
 ///
 /// Returns the response on first 2xx (or 4xx that the caller
@@ -740,16 +811,31 @@ fn send_with_retry(
         }
         // Auth precedence:
         //   1. Cached bearer from a previous dance (this same
-        //      pull session).
-        //   2. Static auth (basic / bearer / FromEnv).
-        //   3. None (anonymous).
-        let auth_to_send: Option<HeaderValue> = ctx
-            .cached_bearer
-            .borrow()
-            .clone()
-            .or_else(|| ctx.static_auth.clone());
-        if let Some(hv) = auth_to_send {
-            req = req.header(AUTHORIZATION, hv);
+        //      pull session, this same registry host).
+        //   2. Provider-chain credentials (env / basic / bearer /
+        //      future docker-config / vault).
+        //   3. None (anonymous; registry may still up-grade via
+        //      the 401 dance below).
+        //
+        // The provider walk happens every request rather than once
+        // at construction time. `AuthManager::resolve` already
+        // checked at construction time that no provider is broken,
+        // so the only Err here would come from a TOCTOU change
+        // (env var unset mid-pull); we fold that as an Auth error.
+        let auth_to_send: Option<HeaderValue> =
+            match ctx.auth.cached_bearer(&ctx.registry_host) {
+                Some(tok) => Some(header_value_from_bearer(&tok)?),
+                None => match ctx.auth.resolve(&ctx.registry_host).map_err(|e| {
+                    RegistryPullError::Auth {
+                        source: Box::new(e),
+                    }
+                })? {
+                    Some(creds) => Some(header_value_from_credentials(&creds)?),
+                    None => None,
+                },
+            };
+        if let Some(hv) = &auth_to_send {
+            req = req.header(AUTHORIZATION, hv.clone());
         }
         let send_result = req.send();
         match send_result {
@@ -776,16 +862,22 @@ fn send_with_retry(
                             .map_err(|e| RegistryPullError::Auth {
                                 source: Box::new(e),
                             })?;
-                        let new_bearer = fetch_bearer_token(
-                            &token_client,
-                            &challenge,
-                            ctx.static_auth.as_ref(),
-                        )?;
-                        // Cache for the rest of the pull session.
-                        *ctx.cached_bearer.borrow_mut() = Some(new_bearer);
+                        // Reuse the provider-chain credentials as
+                        // the realm-side basic auth (Docker Hub /
+                        // GHCR expect the original creds on the
+                        // token endpoint, then return a bearer
+                        // token to use against the registry
+                        // endpoint).
+                        let bearer_token =
+                            fetch_bearer_token(&token_client, &challenge, auth_to_send.as_ref())?;
+                        // Cache the raw token keyed by registry
+                        // for the rest of the pull session — this
+                        // is what spares every subsequent blob
+                        // fetch from re-running the dance.
+                        ctx.auth.cache_bearer(&ctx.registry_host, bearer_token);
                         did_dance_this_call = true;
                         // Retry immediately (without sleep) under
-                        // new credentials.
+                        // the freshly-cached bearer.
                         continue;
                     }
                 }

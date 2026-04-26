@@ -1,15 +1,13 @@
 //! Authentication for the registry-pull path.
 //!
-//! Reuses [`oci_publish::RegistryAuth`] — the same enum publish
-//! already exposes — so an operator who configured auth for
-//! `ocimage publish` doesn't have to learn a second model for
-//! `ocimage verify <registry-ref>`.
+//! Two pieces of machinery live here:
 //!
-//! Two auth shapes are handled here:
-//!
-//! 1. **Pre-supplied credentials.** Basic / Bearer / FromEnv resolve
-//!    to a static `Authorization` header value before the first
-//!    request fires. The header rides every wire call.
+//! 1. **[`AuthManager`].** Owns a chain of
+//!    [`crate::registry::credential_provider::CredentialProvider`]
+//!    impls + a per-registry bearer-token cache. Replaces what was
+//!    previously a flat `AuthMode` enum on the wire context. New
+//!    providers (Vault, Docker-config) plug in by implementing the
+//!    trait — the wire layer doesn't grow vendor knowledge.
 //!
 //! 2. **The 401-then-WWW-Authenticate dance.** OCI Distribution
 //!    Spec §3.4 lets an anonymous (or basic-auth-credentialed) GET
@@ -17,16 +15,24 @@
 //!    header. The client fetches a short-lived bearer token from
 //!    the realm and retries the original request. This is how
 //!    Docker Hub and GHCR's anonymous-readable repos work today.
+//!
+//!    [`fetch_bearer_token`], [`extract_bearer_challenge`], and
+//!    [`parse_bearer_challenge`] are pull-private helpers
+//!    [`crate::registry::pull`] threads through its retry loop.
+//!    The cached bearer is then stored via
+//!    [`AuthManager::cache_bearer`] so subsequent blob fetches
+//!    don't re-401 — without that cache, every blob in a pull
+//!    would re-run the dance.
 
 use std::collections::HashMap;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use reqwest::blocking::Client;
 use reqwest::header::{HeaderValue, AUTHORIZATION, WWW_AUTHENTICATE};
 use reqwest::StatusCode;
 
-use oci_publish::RegistryAuth;
-
+use super::credential_provider::{CredError, CredentialProvider, Credentials};
 use super::error::{preview_body_capped, RegistryPullError};
 
 /// Per-HTTP-request timeout for the token-realm exchange. Same
@@ -35,70 +41,113 @@ use super::error::{preview_body_capped, RegistryPullError};
 /// the verify forever.
 pub(super) const TOKEN_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// One env var name the publish side uses; we re-import them so
-/// the test surface for "no credentials in env" is consistent.
-const ENV_REGISTRY_TOKEN: &str = "REGISTRY_TOKEN";
-const ENV_REGISTRY_USERNAME: &str = "REGISTRY_USERNAME";
-const ENV_REGISTRY_PASSWORD: &str = "REGISTRY_PASSWORD";
+/// Coordinator that walks a chain of [`CredentialProvider`]s and
+/// caches bearer tokens harvested via the OCI 401-then-realm dance.
+///
+/// ### Walking semantics
+///
+/// [`AuthManager::resolve`] iterates providers in registration order:
+///
+/// - First `Ok(Some(creds))` wins; iteration stops there.
+/// - First `Err(CredError)` short-circuits — a broken provider
+///   (e.g. Vault is down) is surfaced rather than silently falling
+///   through to anonymous.
+/// - All `Ok(None)` → returns `Ok(None)` (the chain is exhausted;
+///   the wire layer treats this as "send no Authorization header").
+///
+/// ### Bearer cache
+///
+/// A successful 401-realm dance produces a short-lived bearer
+/// token. [`AuthManager::cache_bearer`] stores it keyed by registry
+/// host so subsequent blob fetches in the same pull session reuse
+/// the token instead of re-401-ing on every blob. The cache is
+/// [`Mutex`]-protected because the trait surface promises
+/// `Send + Sync`; today the registry-pull path is blocking-single-
+/// threaded so contention is zero, but locking now means a future
+/// parallel-blob-pull refactor doesn't have to revisit the auth
+/// surface.
+pub struct AuthManager {
+    providers: Vec<Box<dyn CredentialProvider>>,
+    /// Bearer tokens harvested via the 401-realm dance, keyed by
+    /// registry host (`ghcr.io`, `localhost:5000`, …). Survives
+    /// across blob fetches in a single pull. The HashMap's value
+    /// is the raw bearer token string the dance returned; the
+    /// caller (`pull::send_with_retry`) wraps it as
+    /// `Authorization: Bearer <tok>` per request.
+    cached_bearer: Mutex<HashMap<String, String>>,
+}
 
-/// Resolve a `RegistryAuth` mode into a static `Authorization`
-/// header value (or `None` for anonymous). Mirrors the publish
-/// side's `resolve_auth` so the two paths agree on env-var
-/// precedence (`REGISTRY_TOKEN` > `REGISTRY_USERNAME`+`REGISTRY_PASSWORD`).
-pub(super) fn resolve_static_auth_header(
-    auth: &RegistryAuth,
+impl AuthManager {
+    /// Build an AuthManager from a chain of providers.
+    pub fn new(providers: Vec<Box<dyn CredentialProvider>>) -> Self {
+        AuthManager {
+            providers,
+            cached_bearer: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Walk providers in order, returning the first `Some` or the
+    /// first `Err`. `Ok(None)` after exhausting the chain means
+    /// "no credentials" — the wire layer sends no Authorization
+    /// header, and the registry decides whether anonymous access
+    /// is allowed (and may still up-grade to bearer via the 401
+    /// dance on this same call).
+    pub fn resolve(&self, registry: &str) -> Result<Option<Credentials>, CredError> {
+        for provider in &self.providers {
+            match provider.resolve(registry)? {
+                Some(creds) => return Ok(Some(creds)),
+                None => continue,
+            }
+        }
+        Ok(None)
+    }
+
+    /// Cache a bearer token harvested from a 401-realm dance.
+    /// Subsequent calls to [`AuthManager::cached_bearer`] for the
+    /// same `registry` return `Some(token)` so the wire layer can
+    /// attach `Authorization: Bearer <token>` without re-running
+    /// the dance. Without this cache, every blob fetch in a multi-
+    /// blob pull would re-401, re-token-dance, and re-retry.
+    pub fn cache_bearer(&self, registry: &str, token: String) {
+        // .lock() can poison; we recover by taking the inner. The
+        // dance never panics while holding the lock, so the
+        // poisoned state would only happen via a downstream bug;
+        // recovering keeps the rest of the pull resilient.
+        let mut map = self.cached_bearer.lock().unwrap_or_else(|p| p.into_inner());
+        map.insert(registry.to_string(), token);
+    }
+
+    /// Look up a previously-cached bearer token for `registry`.
+    /// `None` means no dance has run yet for this registry in this
+    /// session.
+    pub fn cached_bearer(&self, registry: &str) -> Option<String> {
+        let map = self.cached_bearer.lock().unwrap_or_else(|p| p.into_inner());
+        map.get(registry).cloned()
+    }
+}
+
+/// Build an `Authorization` HeaderValue from a credentials string.
+/// Marks the header as sensitive so it's redacted in any reqwest
+/// debug output.
+pub(super) fn header_value_from_credentials(
+    cred: &Credentials,
 ) -> Result<HeaderValue, RegistryPullError> {
-    let header_value = match auth {
-        RegistryAuth::Bearer { token } => {
-            if token.is_empty() {
-                return Err(RegistryPullError::Auth {
-                    source: "RegistryAuth::Bearer with empty token".into(),
-                });
-            }
-            format!("Bearer {token}")
-        }
-        RegistryAuth::Basic { username, password } => {
-            if username.is_empty() || password.is_empty() {
-                return Err(RegistryPullError::Auth {
-                    source: "RegistryAuth::Basic requires non-empty username + password".into(),
-                });
-            }
-            let creds = format!("{username}:{password}");
-            format!("Basic {}", base64_encode(creds.as_bytes()))
-        }
-        RegistryAuth::FromEnv => {
-            if let Ok(t) = std::env::var(ENV_REGISTRY_TOKEN) {
-                if !t.is_empty() {
-                    format!("Bearer {t}")
-                } else {
-                    return Err(RegistryPullError::Auth {
-                        source: format!(
-                            "{ENV_REGISTRY_TOKEN} is set but empty; unset it or provide a token"
-                        )
-                        .into(),
-                    });
-                }
-            } else {
-                let user = std::env::var(ENV_REGISTRY_USERNAME).unwrap_or_default();
-                let pass = std::env::var(ENV_REGISTRY_PASSWORD).unwrap_or_default();
-                if user.is_empty() || pass.is_empty() {
-                    return Err(RegistryPullError::Auth {
-                        source: format!(
-                            "no registry credentials in env: set {ENV_REGISTRY_TOKEN}, \
-                             or both {ENV_REGISTRY_USERNAME} and {ENV_REGISTRY_PASSWORD}"
-                        )
-                        .into(),
-                    });
-                }
-                let creds = format!("{user}:{pass}");
-                format!("Basic {}", base64_encode(creds.as_bytes()))
-            }
-        }
-    };
     let mut hv =
-        HeaderValue::from_str(&header_value).map_err(|source| RegistryPullError::Auth {
+        HeaderValue::from_str(&cred.auth_header).map_err(|source| RegistryPullError::Auth {
             source: Box::new(source),
         })?;
+    hv.set_sensitive(true);
+    Ok(hv)
+}
+
+/// Build an `Authorization: Bearer <token>` HeaderValue from a raw
+/// bearer-token string (as cached by [`AuthManager::cache_bearer`]).
+pub(super) fn header_value_from_bearer(token: &str) -> Result<HeaderValue, RegistryPullError> {
+    let mut hv = HeaderValue::from_str(&format!("Bearer {token}")).map_err(|source| {
+        RegistryPullError::Auth {
+            source: Box::new(source),
+        }
+    })?;
     hv.set_sensitive(true);
     Ok(hv)
 }
@@ -176,11 +225,15 @@ pub(super) fn parse_bearer_challenge(header: &str) -> Option<HashMap<String, Str
 /// reused as the realm-side credentials — Docker Hub / GHCR
 /// expect basic-auth on the token endpoint then return a bearer
 /// token to use against the registry endpoint.
+///
+/// Returns the raw bearer token string (without the `Bearer ` prefix)
+/// so the caller can stash it in [`AuthManager::cache_bearer`]
+/// keyed by registry, then re-derive the header on each request.
 pub(super) fn fetch_bearer_token(
     client: &Client,
     challenge: &HashMap<String, String>,
     static_auth: Option<&HeaderValue>,
-) -> Result<HeaderValue, RegistryPullError> {
+) -> Result<String, RegistryPullError> {
     let realm = challenge
         .get("realm")
         .ok_or_else(|| RegistryPullError::Auth {
@@ -241,13 +294,7 @@ pub(super) fn fetch_bearer_token(
             source: "token endpoint returned empty token string".into(),
         });
     }
-    let mut hv = HeaderValue::from_str(&format!("Bearer {token_str}")).map_err(|e| {
-        RegistryPullError::Auth {
-            source: Box::new(e),
-        }
-    })?;
-    hv.set_sensitive(true);
-    Ok(hv)
+    Ok(token_str.to_string())
 }
 
 /// If `resp` is a 401 with a parseable `WWW-Authenticate: Bearer`
@@ -313,35 +360,12 @@ fn urlencode(s: &str) -> String {
     out
 }
 
-/// Minimal base64 encoder for HTTP Basic auth. Mirrors the
-/// publish-side helper — same alphabet + padding rules.
-fn base64_encode(input: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
-    for chunk in input.chunks(3) {
-        let b0 = chunk[0];
-        let b1 = if chunk.len() > 1 { chunk[1] } else { 0 };
-        let b2 = if chunk.len() > 2 { chunk[2] } else { 0 };
-        let triple = ((b0 as u32) << 16) | ((b1 as u32) << 8) | (b2 as u32);
-        out.push(ALPHABET[((triple >> 18) & 0x3F) as usize] as char);
-        out.push(ALPHABET[((triple >> 12) & 0x3F) as usize] as char);
-        if chunk.len() > 1 {
-            out.push(ALPHABET[((triple >> 6) & 0x3F) as usize] as char);
-        } else {
-            out.push('=');
-        }
-        if chunk.len() > 2 {
-            out.push(ALPHABET[(triple & 0x3F) as usize] as char);
-        } else {
-            out.push('=');
-        }
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::registry::credential_provider::{
+        AnonymousProvider, BasicProvider, BearerProvider, CredentialProvider,
+    };
 
     // Catches: parse_bearer_challenge accepting a Basic challenge
     // and routing it into the bearer-token dance — would silently
@@ -391,34 +415,6 @@ mod tests {
         assert_eq!(h.get("realm").map(String::as_str), Some("x"));
     }
 
-    // Catches: resolve_static_auth_header silently letting an empty
-    // bearer token through. The wire layer would attach
-    // `Authorization: Bearer ` (empty) and the registry returns a
-    // confusing 400; failing locally is the operator's fix point.
-    #[test]
-    fn test_resolve_static_auth_header_rejects_empty_bearer() {
-        let err =
-            resolve_static_auth_header(&RegistryAuth::Bearer { token: "".into() }).unwrap_err();
-        match err {
-            RegistryPullError::Auth { .. } => {}
-            other => panic!("expected Auth error, got {other:?}"),
-        }
-    }
-
-    // Catches: resolve_static_auth_header generating a malformed
-    // Basic header (missing colon between user and password, or
-    // wrong base64 alphabet). Pre-computed reference value:
-    // `printf 'admin:hunter2' | base64`.
-    #[test]
-    fn test_resolve_static_auth_header_basic_matches_reference() {
-        let h = resolve_static_auth_header(&RegistryAuth::Basic {
-            username: "admin".into(),
-            password: "hunter2".into(),
-        })
-        .unwrap();
-        assert_eq!(h.to_str().unwrap(), "Basic YWRtaW46aHVudGVyMg==");
-    }
-
     // Catches: a regression where url-encoding a value drops `:`
     // — OCI scope strings (`repository:foo/bar:pull`) contain
     // colons and the token endpoint must see them verbatim.
@@ -434,5 +430,143 @@ mod tests {
     fn test_urlencode_escapes_space() {
         let e = urlencode("a b");
         assert_eq!(e, "a%20b");
+    }
+
+    // ── AuthManager tests ─────────────────────────────────────────
+
+    /// Catches: AuthManager not stopping at the first `Some` —
+    /// would let a downstream provider override the chosen creds.
+    /// E.g. if [Bearer, Basic] both return Some, the chain must
+    /// pick Bearer (registered first), not Basic. The contract
+    /// "first Some wins" is what makes the chain order meaningful.
+    #[test]
+    fn test_auth_manager_walks_providers_in_order() {
+        let providers: Vec<Box<dyn CredentialProvider>> = vec![
+            Box::new(BearerProvider::new("first-token".into()).unwrap()),
+            Box::new(BasicProvider::new("u".into(), "p".into()).unwrap()),
+        ];
+        let mgr = AuthManager::new(providers);
+        let creds = mgr
+            .resolve("ghcr.io")
+            .expect("must not error")
+            .expect("first provider returns Some");
+        assert_eq!(
+            creds.auth_header, "Bearer first-token",
+            "first provider's creds must win — got {:?}",
+            creds.auth_header,
+        );
+        assert_eq!(creds.source, "bearer");
+    }
+
+    /// Catches: AuthManager treating an `Ok(None)` as a stopping
+    /// condition. The chain `[Anonymous, Bearer]` must keep walking
+    /// past Anonymous (which returns Ok(None)) and reach Bearer.
+    /// Without this, AnonymousProvider would silently shadow every
+    /// downstream provider in chains that include it.
+    #[test]
+    fn test_auth_manager_skips_none_to_reach_next_provider() {
+        let providers: Vec<Box<dyn CredentialProvider>> = vec![
+            Box::new(AnonymousProvider),
+            Box::new(BearerProvider::new("downstream-tok".into()).unwrap()),
+        ];
+        let mgr = AuthManager::new(providers);
+        let creds = mgr.resolve("ghcr.io").unwrap().expect("must reach Bearer");
+        assert_eq!(creds.auth_header, "Bearer downstream-tok");
+    }
+
+    /// A provider that always errors. Models a broken Vault or
+    /// Docker-config provider — the kind of failure that must NOT
+    /// silently fall through to anonymous.
+    struct AlwaysErrorProvider;
+    impl CredentialProvider for AlwaysErrorProvider {
+        fn resolve(&self, _registry: &str) -> Result<Option<Credentials>, CredError> {
+            Err(CredError::ProviderFailed {
+                provider: "test-broken",
+                detail: "simulated upstream failure".into(),
+            })
+        }
+        fn name(&self) -> &'static str {
+            "test-broken"
+        }
+    }
+
+    /// Catches: AuthManager silently skipping an `Err` provider and
+    /// falling through to a downstream Anonymous (or any other)
+    /// provider. Operator scenario: Vault is wedged. The operator's
+    /// CI must FAIL loudly, not silently push unauthenticated.
+    #[test]
+    fn test_auth_manager_first_err_short_circuits() {
+        let providers: Vec<Box<dyn CredentialProvider>> = vec![
+            Box::new(AlwaysErrorProvider),
+            // Downstream provider that WOULD succeed if reached —
+            // the test asserts it isn't reached.
+            Box::new(BearerProvider::new("would-succeed".into()).unwrap()),
+        ];
+        let mgr = AuthManager::new(providers);
+        let err = mgr.resolve("ghcr.io").expect_err("Err must short-circuit");
+        match err {
+            CredError::ProviderFailed { provider, .. } => {
+                assert_eq!(
+                    provider, "test-broken",
+                    "the failing provider must be named — operators rely on the diagnostic",
+                );
+            }
+            other => panic!("expected ProviderFailed, got {other:?}"),
+        }
+    }
+
+    /// Catches: forgetting to populate the bearer cache after the
+    /// 401 dance. Without this, every subsequent blob fetch in a
+    /// multi-blob pull re-401s and re-runs the dance. The test
+    /// asserts: cache_bearer + cached_bearer round-trip across
+    /// "calls" simulating sequential blob fetches.
+    #[test]
+    fn test_cached_bearer_survives_across_resolve_calls() {
+        let mgr = AuthManager::new(vec![]);
+        let registry = "ghcr.io";
+        // Initially, no cached bearer for this registry.
+        assert!(
+            mgr.cached_bearer(registry).is_none(),
+            "no dance has run yet — cached_bearer must be None",
+        );
+        // Simulate the 401 dance completing.
+        mgr.cache_bearer(registry, "harvested-token".into());
+        // Subsequent blob fetches see the cached token without
+        // re-running the dance.
+        assert_eq!(
+            mgr.cached_bearer(registry).as_deref(),
+            Some("harvested-token"),
+            "subsequent blob fetches must see the cached token; \
+             without this, every blob in a pull would re-401",
+        );
+        // A second call returns the same cached token (didn't get
+        // popped or invalidated by the read).
+        assert_eq!(
+            mgr.cached_bearer(registry).as_deref(),
+            Some("harvested-token"),
+            "cached_bearer must be a peek, not a take — multiple blob fetches read it",
+        );
+    }
+
+    /// Catches: AuthManager keying the bearer cache by something
+    /// other than registry host. If the cache used a global key
+    /// (e.g. an empty string), a multi-registry session would mix
+    /// tokens. We don't have multi-registry pulls today but the
+    /// trait surface promises per-registry semantics; pinning the
+    /// contract now keeps a future breakage out.
+    #[test]
+    fn test_cached_bearer_is_keyed_by_registry() {
+        let mgr = AuthManager::new(vec![]);
+        mgr.cache_bearer("ghcr.io", "ghcr-token".into());
+        mgr.cache_bearer("docker.io", "docker-token".into());
+        assert_eq!(mgr.cached_bearer("ghcr.io").as_deref(), Some("ghcr-token"));
+        assert_eq!(
+            mgr.cached_bearer("docker.io").as_deref(),
+            Some("docker-token")
+        );
+        assert!(
+            mgr.cached_bearer("other.example").is_none(),
+            "an unrelated registry must NOT see another registry's cached token",
+        );
     }
 }
