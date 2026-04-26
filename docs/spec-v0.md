@@ -1,6 +1,8 @@
 # justoci spec v0
 
-*One TOML file → attested OCI artifact, for any artifact type.*
+*One TOML file → attested OCI artifact, for any artifact type.
+Production-grade from day one — no opt-in robustness, no later "we'll
+harden it" milestones.*
 
 ## What this is
 
@@ -23,7 +25,8 @@ no separate SBOM step, no separate provenance pipeline.
 ## Top-level structure
 
 ```toml
-id          = "<name>:<tag>"   # required
+spec_version = "0"              # required — pins parser semantics
+id          = "<name>:<tag>"    # required
 kind        = "<artifact-kind>" # required — see "Kinds" below
 description = "..."             # optional
 
@@ -31,10 +34,19 @@ description = "..."             # optional
 os   = "linux"
 arch = "x86_64"
 
-[[layers]]                      # ordered, at least one required
-source      = "path/to/blob"
+[[layers]]                      # at least one required, ordered
+source      = "path/to/blob"    # mutually exclusive with [[layers.files]]
 media_type  = "application/vnd.example+binary"
-compression = "gzip"            # optional: gzip | zstd | none
+compression = "none"            # none (default) | gzip | zstd
+
+# Or — build a layer from individual files:
+[[layers]]
+media_type = "application/vnd.example.tar+gzip"
+compression = "gzip"
+[[layers.files]]
+source = "config/app.toml"
+dest   = "/etc/app.toml"
+mode   = 0o644
 
 [config]                        # optional, kind-specific
 # arbitrary keys → serialised as the OCI image config blob
@@ -55,11 +67,21 @@ sign.identity     = "..."       # for keyless: OIDC identity; for key: path
 
 `kind` is the artifact-type discriminator. v0 ships three:
 
-| `kind`         | What it is                                             | Sample media types                              |
-|----------------|--------------------------------------------------------|-------------------------------------------------|
-| `oci_artifact` | Generic OCI artifact (oras-style). Fully type-agnostic. | Caller-defined (`application/vnd.<vendor>+...`) |
-| `vm_image`     | Bootable VM image — kernel + initrd + rootfs.          | `application/vnd.vmisolate.kernel+binary` etc.  |
-| `raw_image`    | Single flashable blob (firmware, disk image).          | `application/vnd.firmware.raw+binary` etc.      |
+| `kind`         | What it is                                              | Layer count   | Sample media types                              |
+|----------------|---------------------------------------------------------|---------------|-------------------------------------------------|
+| `oci_artifact` | Generic OCI artifact (oras-style). Fully type-agnostic. | 1+ (any)      | Caller-defined (`application/vnd.<vendor>+...`) |
+| `vm_image`     | Bootable VM image — kernel + initrd + rootfs.           | exactly 3     | `application/vnd.vmisolate.kernel+binary` etc.  |
+| `raw_image`    | Single flashable blob (firmware, disk image).           | exactly 1     | `application/vnd.firmware.raw+binary` etc.      |
+
+### Layer ordering rules
+
+Validated at spec-load time:
+
+- `vm_image` — layers MUST appear in boot order: `kernel`, `initrd`,
+  `rootfs`. The first layer's media type must match `*kernel*`, the
+  second `*initrd*`, the third `*rootfs*`. Reordering = build error.
+- `oci_artifact` — caller-defined order, preserved as written.
+- `raw_image` — exactly one layer. Two or more = build error.
 
 Each kind has a recommended `[config]` schema (see worked examples).
 Unknown keys in `[config]` are passed through to the OCI config blob
@@ -67,19 +89,47 @@ verbatim — the kind's role is *validation*, not *transformation*.
 
 ## Layers
 
-Layers are content-addressed blobs that become OCI layer descriptors:
+Two source modes, mutually exclusive per layer:
 
-- `source` — file path relative to the spec file's directory.
-- `media_type` — full OCI media type. Custom vendor types are encouraged
-  for non-container artifacts (`application/vnd.<vendor>.<thing>+<format>`).
-- `compression` — `gzip` (default for `+gzip` media types), `zstd`, or
-  `none` (default otherwise). Compression happens at build time; the
-  resulting layer's media type reflects the compressed form.
-- The layer's digest (sha256) is computed at build time and recorded
-  both in the OCI manifest and the SLSA statement.
+### `source = "..."` — pre-built blob
 
-Layer order is preserved exactly — for VM images, it determines boot
-order (kernel → initrd → rootfs by convention).
+```toml
+[[layers]]
+source     = "build/rootfs.ext4"
+media_type = "application/vnd.vmisolate.rootfs.ext4+gzip"
+compression = "gzip"
+```
+
+The file at `source` is read, optionally compressed, then content-hashed.
+
+### `[[layers.files]]` — assemble from files
+
+```toml
+[[layers]]
+media_type  = "application/vnd.config.tar+gzip"
+compression = "gzip"
+[[layers.files]]
+source = "config/app.toml"
+dest   = "/etc/app.toml"
+mode   = 0o644
+[[layers.files]]
+source = "config/keys/"     # directories descend recursively
+dest   = "/etc/keys/"
+mode   = 0o600
+```
+
+justoci builds a deterministic tar (sorted entries, `mtime = 0`,
+fixed uid/gid `0:0`), compresses if requested, then hashes. **Same
+input files → same digest, every time.**
+
+### Compression defaults
+
+- If `media_type` ends in `+gzip` and `compression` is unset → `gzip`.
+- If `media_type` ends in `+zstd` and `compression` is unset → `zstd`.
+- Otherwise (default for unknown media types) → `none`.
+
+The product position: never compress something the caller didn't ask
+for. Predictability beats bandwidth.
 
 ## Config blob
 
@@ -129,11 +179,129 @@ and developer iteration, not for production builds.
   enumerates layer contents; `sources` enumerates the build-time deps;
   `both` does both.
 - **Signature** — cosign over the artifact digest. Keyless mode uses
-  Sigstore's Fulcio + Rekor by default.
+  Sigstore's Fulcio + Rekor. Strict ordering: sign succeeds → Rekor
+  log entry confirmed → artifact considered signed. If Rekor fails,
+  the artifact is unsigned (no half-states).
 
-All three live as **OCI 1.1 referrers** of the main artifact — pull
-the artifact, you can list and verify its attestations from the same
-registry without a separate signing service.
+### SLSA level claims
+
+L2 is the realistic default. To claim L3+, justoci must be invoked from
+a hosted build platform that meets SLSA's isolation requirements
+(GitHub Actions reusable workflow, Tekton chains, etc.). The spec
+declares the *intended* level; the build environment determines
+whether the claim is *valid*. Mismatched claims surface as a hard
+validation error from `ocimage verify`.
+
+All three artefacts live as **OCI 1.1 referrers** of the main artifact —
+pull the artifact, you can list and verify its attestations from the
+same registry without a separate signing service.
+
+## Production guarantees
+
+Locked in for v0:
+
+### 1. Spec versioning
+
+`spec_version = "0"` is required at the top of every spec. Future
+versions (v1+) may change shape; old specs still build under v0
+semantics. Parsers reject unknown versions rather than silently
+misinterpreting them.
+
+### 2. Reproducible builds
+
+Same spec + same source files → same artifact digest. Bit-for-bit.
+
+- Layer digests are sha256 of (compressed) blob content. No metadata.
+- Tar layers (`[[layers.files]]`) use sorted entries, `mtime = 0`,
+  `uid:gid = 0:0`, `mode` from spec.
+- The OCI manifest's `created` annotation is intentionally absent
+  from the manifest (placed in the SLSA statement instead, where it
+  belongs).
+- The SLSA statement records a `build_started` timestamp, but the
+  spec hash that pins the build is computed *before* timestamps are
+  introduced — the spec hash is reproducible across re-runs.
+
+### 3. Spec canonicalisation
+
+Spec identity is `sha256(jcs(toml_to_json(spec)))`:
+
+1. Parse TOML to a JSON-compatible value tree.
+2. Apply RFC 8785 JSON Canonicalization Scheme (JCS).
+3. SHA-256 the canonical bytes.
+
+JCS is IETF-standard, language-agnostic, and has implementations in
+Rust, Go, Python, JS — so re-implementations of justoci in other
+languages compute the same spec hash for the same input.
+
+### 4. Validation at spec load
+
+Spec parsing is the first error boundary. By the time a `Spec` value
+exists in memory, every one of the following has been checked:
+
+- All required fields present (`spec_version`, `id`, `kind`, `[[layers]]`
+  with the kind-correct count).
+- `id` matches `^[a-z0-9][a-z0-9._-]*:[a-zA-Z0-9._-]+$`.
+- Each layer's `source` file exists and is readable, OR its
+  `[[layers.files]]` block is non-empty and every source path resolves.
+- Each `media_type` matches the OCI media-type grammar
+  (`type "/" subtype ["+" suffix]`).
+- Annotation keys reserved by OCI (`org.opencontainers.image.*`) carry
+  values that match the OCI spec's expectations for that key (e.g.
+  `created` is RFC3339, `version` is non-empty).
+- Cosign identity format is parseable (regex for keyless, file-path
+  exists for key mode).
+- SLSA level is in `{0, 1, 2, 3, 4}`.
+
+Spec errors fail at *load* time with a single typed error containing
+the offending field's TOML span — not at build time, halfway through
+processing.
+
+### 5. Typed error model
+
+```text
+JustociError
+├── SpecError       — load + validation failures
+├── BuildError      — compression, hashing, manifest assembly
+├── AttestError     — SLSA emit, SBOM generation, signing
+└── PublishError    — network, auth, registry rejection
+```
+
+Each variant carries enough context for an operator to act:
+file path + line/col span for spec errors; HTTP status + response body
+for publish errors; underlying tool stderr for build/attest errors.
+
+### 6. Partial-failure semantics
+
+- **Build is atomic per artifact.** A successful build produces a
+  complete, self-consistent output directory. A failed build leaves
+  the output directory in a `*.partial` state and exits non-zero —
+  consumer tools must not pick up partial outputs.
+- **Publish is per-blob with retries.** Resumable on transient
+  failures via the registry's content-addressed semantics: re-pushing
+  an existing blob is a no-op.
+- **Sign + Rekor are coupled.** Sign succeeds → Rekor record
+  confirmed → artifact considered signed. If Rekor fails after sign,
+  the artifact is unsigned and the CLI exits non-zero.
+
+### 7. CLI exit codes
+
+```
+0    success
+1    SpecError       — fix the spec, retry
+2    BuildError      — fix the inputs, retry
+3    AttestError     — re-run with --no-attest if signing infra is
+                       unavailable; otherwise fix and retry
+4    PublishError    — transient or auth; safe to retry
+64+  catastrophic / unexpected
+```
+
+CI pipelines route on the exit code without parsing stderr.
+
+### 8. OCI compliance pin
+
+- OCI Image Spec v1.1.
+- OCI Distribution Spec v1.1 (referrers API required).
+- Manifest `schemaVersion = 2`, `mediaType = application/vnd.oci.image.manifest.v1+json`.
 
 ## Worked examples
 
@@ -158,6 +326,7 @@ ocimage build   <spec.toml> [-o <dir>]      # produce artifact + attestations
 ocimage publish <dir> --to <sink>           # push to HTTP / OCI registry
 ocimage verify  <ref>                       # verify SLSA + SBOM + signature
 ocimage sbom    <spec-or-ref> [-o <file>]   # emit/extract SBOM only
+ocimage inspect <spec-or-ref>               # canonical form + spec hash
 ```
 
 Build and publish are decoupled so CI can sign artifacts in a
@@ -167,23 +336,10 @@ hardened environment separate from the build host.
 
 - **Multi-platform / fat manifests.** A spec describes one artifact for
   one platform. Multi-platform images come in v1.
-- **Build-time scripts.** Layers are pre-existing files; justoci does
-  not run a builder. (vmisolate runs its own image build *before*
-  invoking justoci.)
+- **Build-time scripts.** Layers are pre-existing files or
+  spec-described file sets; justoci does not run a builder. (vmisolate
+  runs its own image build *before* invoking justoci.)
 - **Mutable tags / image promotion.** Build outputs are content-
   addressed; tag management is the registry's job.
 - **In-toto attestation chains.** v0 emits a single SLSA statement;
   multi-step attestation chains land later.
-
-## Open questions (to resolve before v0 freeze)
-
-1. **Compression default for unknown media types** — `none` or `zstd`?
-   `none` is safest (matches `oras` behaviour); `zstd` saves bandwidth
-   for free. Lean: `none`, callers opt in.
-2. **`[[files]]` convenience block** — generate a layer from individual
-   files (with `source`, `dest`, `mode`) instead of a pre-built tarball.
-   Useful, but adds a "build a layer" responsibility justoci was trying
-   to avoid. Lean: ship in v0.1, not v0.
-3. **Spec hashing algorithm** — sha256 over the canonical TOML serialisation
-   for the SLSA statement's spec ref. Need to pin which TOML library's
-   canonical form, or define our own.

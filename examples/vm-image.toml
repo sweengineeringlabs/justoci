@@ -5,9 +5,10 @@
 # consumes this file, validates the [config] block against its
 # `ConfigManifest`, and hands the layer assembly to justoci.
 
-id          = "llmboot:0.1.14"
-kind        = "vm_image"
-description = "llmboot LLM daemon — packaged as a vmisolate microVM"
+spec_version = "0"
+id           = "llmboot:0.1.14"
+kind         = "vm_image"
+description  = "llmboot LLM daemon — packaged as a vmisolate microVM"
 
 [platform]
 os   = "linux"

@@ -7,9 +7,10 @@
 # This is what justoci is for that today's bash + oras + cosign
 # pipelines aren't: one spec, one CLI, attested by default.
 
-id          = "ggml-llama-7b:q4_0"
-kind        = "oci_artifact"
-description = "Quantized Llama-7B GGML weights for llama.cpp"
+spec_version = "0"
+id           = "ggml-llama-7b:q4_0"
+kind         = "oci_artifact"
+description  = "Quantized Llama-7B GGML weights for llama.cpp"
 
 # ── Layer ─────────────────────────────────────────────────────────────────
 # Single-layer artifact. The vendor media type declares "this is GGML

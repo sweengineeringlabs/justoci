@@ -8,9 +8,10 @@
 # distribute via plain HTTPS or S3 without provenance. justoci ships
 # all of it from one spec.
 
-id          = "device-firmware:1.4.2"
-kind        = "raw_image"
-description = "DevBoard-X7 embedded device firmware — raw flashable image"
+spec_version = "0"
+id           = "device-firmware:1.4.2"
+kind         = "raw_image"
+description  = "DevBoard-X7 embedded device firmware — raw flashable image"
 
 [platform]
 arch = "armv7"
