@@ -109,8 +109,23 @@ the full list. Highlights:
 
 ## Documentation
 
-- [`docs/spec-v0.md`](docs/spec-v0.md) — the spec format, frozen for v0.
-- [`examples/vm-image.toml`](examples/vm-image.toml) — vmisolate VM image.
+Organised by SDLC phase under [`docs/`](docs/):
+
+- [`docs/README.md`](docs/README.md) — phase index.
+- [`docs/SUMMARY.md`](docs/SUMMARY.md) — mdbook-style linear reading order.
+- [`docs/executive_summary.md`](docs/executive_summary.md) — one-page "what is this" for stakeholders.
+- [`docs/0-ideation/`](docs/0-ideation) — value proposition, market niche.
+- [`docs/1-requirements/`](docs/1-requirements) — CLI surface, production guarantees.
+- [`docs/2-planning/`](docs/2-planning) — roadmap.
+- [`docs/3-design/`](docs/3-design) — frozen spec format, architecture, JCS canonicalisation, cosign+Rekor coupling, OCI 1.1 referrer model.
+- [`docs/4-development/`](docs/4-development) — local setup, contributing, adding a kind.
+- [`docs/5-testing/`](docs/5-testing) — test strategy.
+- [`docs/6-deployment/`](docs/6-deployment) — CI integration recipes.
+- [`docs/7-operations/`](docs/7-operations) — verify-policy format, troubleshooting.
+
+Worked spec examples in [`examples/`](examples/):
+
+- [`examples/vm-image.toml`](examples/vm-image.toml) — VM image (kernel + initrd + rootfs).
 - [`examples/oci-artifact.toml`](examples/oci-artifact.toml) — generic oras-style artifact (ML weights).
 - [`examples/firmware.toml`](examples/firmware.toml) — raw flashable firmware.
 

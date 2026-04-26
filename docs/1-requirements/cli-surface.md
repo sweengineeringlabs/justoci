@@ -1,0 +1,119 @@
+# CLI surface — functional requirements
+
+The `ocimage` operator CLI exposes five subcommands. Each is a
+functional requirement validated by integration tests in
+`cli/tests/`.
+
+## `ocimage build <spec.toml> [-o <dir>] [--no-attest]`
+
+**Functional requirement.** Given a valid spec file, produce an
+OCI Image Layout v1.1 directory containing the artifact + its
+attestation referrers (unless `--no-attest` is set).
+
+**Pipeline.** `parse_and_validate(spec)` → `build(loaded, output)` →
+unless `--no-attest`: open `FsCas` rooted at output → construct
+`BuiltArtifact` → `attest(built, attestation, cas)` → wire results
+into `index.json` as OCI 1.1 referrers.
+
+**Atomicity.** Output goes to `<output>.partial` first; on success,
+atomic rename to `<output>`. Failed builds leave `.partial` for
+diagnosis; the final `<output>` only exists when self-consistent.
+
+**Stdout shape.** Manifest digest, spec hash, attestation summary
+(or "skipped: --no-attest").
+
+**Exit codes.** `0` success; `1` SpecError; `2` BuildError;
+`3` AttestError.
+
+## `ocimage publish <dir> --to <sink> [--auth ...]`
+
+**Functional requirement.** Given a built OCI Image Layout
+directory and a sink, push the artifact + all referrers to that
+sink.
+
+**Sink syntax:**
+- `http:/path/to/dest` — copy to a static-served directory
+  (Level-2 OCI Distribution).
+- `registry:<host>/<repo>:<tag>` — push to an OCI Distribution
+  v2 registry (Level-4).
+
+**Auth (registry sinks):**
+- `--auth env` (default) — read `REGISTRY_TOKEN`, then
+  `REGISTRY_USERNAME` + `REGISTRY_PASSWORD`.
+- `--auth basic --registry-username U --registry-password P`
+- `--auth bearer --registry-token T`
+- `--no-auth` — explicit anonymous.
+
+**Idempotency.** HTTP sink: skip-if-exists per blob. Registry sink:
+HEAD blob → 200 short-circuits; only 404 triggers POST + PUT.
+Re-publish reports every blob in `digests_skipped`, transfers 0
+bytes.
+
+**Atomicity.** HTTP sink writes `index.json` last. Registry sink
+PUTs the manifest last (after layers + config + referrers
+confirmed-present).
+
+**Exit code.** `4` PublishError.
+
+## `ocimage verify <ref> [--policy <file>] [--auth ...]`
+
+**Functional requirement.** Given an artifact reference (local
+OCI layout path or `<host>/<repo>:<tag>`), validate its SLSA +
+SBOM + cosign attestations exist and are well-formed; if `--policy`
+supplied, gate against the policy file.
+
+**Ref detection.**
+- Existing path on disk → local layout, runs verify against it.
+- Otherwise → parse as registry ref, pull into a tempdir
+  (streaming downloads with on-the-fly digest verification),
+  run verify against the tempdir.
+
+**Policy file (`policy.toml`).**
+```toml
+[slsa]
+level = 2                   # require ≥ this level
+
+[sign]
+required = true             # signature must be present + valid
+builder_id = "..."          # exact match required (optional)
+
+[sbom]
+formats = ["cyclonedx", "spdx"]   # at least one must be present
+```
+
+**Validation steps:**
+1. Open the (local or pulled) ImageDir.
+2. Enumerate referrers from `index.json`.
+3. For each cosign signature referrer: invoke cosign verify-blob;
+   require Rekor entry present (no `--no-rekor` accepted).
+4. For each SLSA referrer: validate JSON shape, predicateType,
+   subject digest matches manifest digest.
+5. For each SBOM referrer: validate JSON shape.
+6. If `--policy`: gate each pillar against the policy.
+
+**Exit code.** `5` VerifyError (verify pillar failed or policy
+violation).
+
+## `ocimage sbom <spec-or-ref> [-o <file>] [--format <cyclonedx|spdx>]`
+
+**Functional requirement.** Emit or extract an SBOM.
+
+**Two modes:**
+- **Spec mode** — `<spec-or-ref>` is a `.toml` path. Generates a
+  pre-build SBOM preview from the spec's resolved layer sources.
+- **Image mode** — `<spec-or-ref>` is a built OCI Image Layout
+  directory. Walks referrers, finds the SBOM, emits its bytes.
+
+**Format flag.** Default `cyclonedx`; `spdx` for SPDX 2.3.
+
+## `ocimage inspect <spec-or-ref>`
+
+**Functional requirement.** For debugging.
+
+- **Spec mode** — print canonical (JCS) form of the spec + its
+  hash.
+- **Image mode** — print manifest digest + config digest + layer
+  media types + referrer descriptors.
+
+Useful as the canary that confirms a spec parses cleanly before
+running a full build.
