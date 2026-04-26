@@ -1,0 +1,63 @@
+# Worked example: vmisolate VM image (kind = "vm_image").
+#
+# Replaces the legacy `main/examples/llmboot.spec.toml` shape with the
+# generic justoci v0 spec. The vmisolate-side `oci-image-builder`
+# consumes this file, validates the [config] block against its
+# `ConfigManifest`, and hands the layer assembly to justoci.
+
+id          = "llmboot:0.1.14"
+kind        = "vm_image"
+description = "llmboot LLM daemon — packaged as a vmisolate microVM"
+
+[platform]
+os   = "linux"
+arch = "x86_64"
+
+# ── Layers ────────────────────────────────────────────────────────────────
+# Order matters for vm_image: kernel → initrd → rootfs is the boot order.
+# Custom media types under the vmisolate vendor prefix tell consumers
+# (and other tools) what each blob is without inspecting bytes.
+
+[[layers]]
+source      = "downloads/bzImage"
+media_type  = "application/vnd.vmisolate.kernel+binary"
+
+[[layers]]
+source      = "downloads/initrd.cpio"
+media_type  = "application/vnd.vmisolate.initrd.cpio+gzip"
+compression = "gzip"
+
+[[layers]]
+source      = "downloads/rootfs-alpine.ext4"
+media_type  = "application/vnd.vmisolate.rootfs.ext4+gzip"
+compression = "gzip"
+
+# ── Config blob ───────────────────────────────────────────────────────────
+# Becomes the OCI image config. vmisolate validates this shape against
+# its own `ConfigManifest`; justoci passes the keys through as JSON.
+
+[config]
+init_mode      = "xkinit"
+entrypoint     = ["/usr/bin/llmd", "serve", "--bind", "0.0.0.0:9000"]
+kernel_cmdline = "console=ttyS0 quiet"
+node_tags      = ["linux", "x86_64"]
+
+[config.env]
+RUST_LOG = "info"
+HOME     = "/root"
+
+# ── OCI manifest annotations ──────────────────────────────────────────────
+
+[annotations]
+"org.opencontainers.image.title"       = "llmboot"
+"org.opencontainers.image.version"     = "0.1.14"
+"org.opencontainers.image.source"      = "https://github.com/sweengineeringlabs/llmboot"
+"org.opencontainers.image.description" = "llmboot LLM daemon packaged as a vmisolate VM"
+"org.opencontainers.image.licenses"    = "Apache-2.0"
+
+# ── Attestation ───────────────────────────────────────────────────────────
+# Block omitted entirely → defaults apply:
+#   slsa.level   = 2
+#   sbom.format  = "cyclonedx"
+#   sign.kind    = "cosign-keyless"
+# This is the recommended posture for any artifact that ships to prod.

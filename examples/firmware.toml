@@ -1,0 +1,53 @@
+# Worked example: raw flashable firmware (kind = "raw_image").
+#
+# Single-blob artifact. No entrypoint, no rootfs, no kernel — just bytes
+# that get flashed to a device. Demonstrates the simplest possible spec.
+#
+# This case is the niche: today, embedded teams build firmware images
+# with bash, sign with cosign as a separate step (if at all), and
+# distribute via plain HTTPS or S3 without provenance. justoci ships
+# all of it from one spec.
+
+id          = "device-firmware:1.4.2"
+kind        = "raw_image"
+description = "DevBoard-X7 embedded device firmware — raw flashable image"
+
+[platform]
+arch = "armv7"
+os   = "none"   # bare-metal — no OS kernel context
+
+# ── Layer ─────────────────────────────────────────────────────────────────
+# One blob. The vendor media type identifies the device family so a
+# fleet-update tool can refuse to flash a firmware-A image to a
+# device-B target.
+
+[[layers]]
+source     = "build/firmware.bin"
+media_type = "application/vnd.devboard-x7.firmware+binary"
+
+# ── Config ────────────────────────────────────────────────────────────────
+# Just enough metadata for the flashing tool: where in flash to write,
+# how big the image is. No entrypoint or environment — there's no
+# operating system to pass them to.
+
+[config]
+flash_offset_bytes = 0
+size_bytes         = 4_194_304
+hardware_revision  = "rev3"
+
+# ── Annotations ───────────────────────────────────────────────────────────
+
+[annotations]
+"org.opencontainers.image.title"       = "devboard-x7-firmware"
+"org.opencontainers.image.version"     = "1.4.2"
+"org.opencontainers.image.description" = "Embedded firmware for DevBoard-X7"
+"org.opencontainers.image.vendor"      = "Acme Embedded"
+"vendor.device.model"                  = "DevBoard-X7"
+"vendor.device.compatible-revisions"   = "rev2,rev3"
+
+# ── Attestation ───────────────────────────────────────────────────────────
+# Block omitted → all defaults apply. For firmware, this is critical:
+# SLSA provenance + cosign signature are how a fleet-update agent
+# refuses to flash a tampered binary. The CycloneDX SBOM enumerates
+# the build inputs (toolchain, libc, RTOS components) so a CVE in any
+# of them surfaces in scan tooling.

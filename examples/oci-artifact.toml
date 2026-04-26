@@ -1,0 +1,53 @@
+# Worked example: generic OCI artifact (kind = "oci_artifact").
+#
+# Demonstrates the oras-style use case: ship a blob (or several) under
+# vendor-defined media types, with an opaque config the consumer
+# interprets. Here: quantized Llama-7B weights for llama.cpp.
+#
+# This is what justoci is for that today's bash + oras + cosign
+# pipelines aren't: one spec, one CLI, attested by default.
+
+id          = "ggml-llama-7b:q4_0"
+kind        = "oci_artifact"
+description = "Quantized Llama-7B GGML weights for llama.cpp"
+
+# ── Layer ─────────────────────────────────────────────────────────────────
+# Single-layer artifact. The vendor media type declares "this is GGML
+# weights"; downstream tools that don't recognise it skip the artifact
+# instead of mis-handling it.
+
+[[layers]]
+source     = "weights/llama-7b.q4_0.gguf"
+media_type = "application/vnd.ggml.weights.gguf"
+# compression omitted → none. GGUF is already compressed internally;
+# zstd on top would just burn cycles.
+
+# ── Config blob ───────────────────────────────────────────────────────────
+# Arbitrary type-specific metadata. The consumer (llama.cpp loader)
+# pulls this and uses it to pick context-window / quantisation handling.
+
+[config]
+quantization = "q4_0"
+parameters   = 7_000_000_000
+context_size = 2048
+tokenizer    = "llama"
+
+# ── Annotations ───────────────────────────────────────────────────────────
+
+[annotations]
+"org.opencontainers.image.title"       = "llama-7b-q4_0"
+"org.opencontainers.image.description" = "Llama 7B quantized to 4-bit GGML"
+"org.opencontainers.image.licenses"    = "Llama2"
+"org.opencontainers.image.source"      = "https://huggingface.co/meta-llama/Llama-2-7b"
+
+# ── Attestation ───────────────────────────────────────────────────────────
+# Custom: the layer is an opaque ML weights blob, so a CycloneDX SBOM
+# enumerating its "contents" adds no signal — we turn that off. SLSA
+# provenance + cosign signature still apply: knowing *who built it*
+# and that it hasn't been tampered with is what matters for ML
+# supply-chain integrity.
+
+[attestation]
+slsa.level  = 2
+sbom.format = "off"
+sign.kind   = "cosign-keyless"
