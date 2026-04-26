@@ -80,6 +80,12 @@ cargo test --workspace -- --ignored       # the cosign-installed
                                           # OCIMAGE_COSIGN_BIN if
                                           # you want a different
                                           # binary)
+
+# Smoke test against a real registry:2 container. Requires Docker
+# on PATH; prints a SKIP line and returns Ok if Docker is absent.
+docker pull registry:2                    # one-time
+cargo test -p swe_justoci_oci_cli \
+    --test registry_smoke_test -- --ignored --test-threads=1
 ```
 
 ## Linting

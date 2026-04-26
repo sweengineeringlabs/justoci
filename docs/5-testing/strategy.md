@@ -88,15 +88,36 @@ Each row is a real bug-class count, not a line-of-code count.
   a `Mutex` to serialise. CI runs them with `--test-threads=1`
   in the dedicated `--ignored` pass.
 
+## Smoke tests
+
+One `#[ignore]`-gated test per real-world dependency the unit
+suite can't fake convincingly. Each one names the wire-shape /
+behavioural-drift bug class it catches that mocks miss:
+
+| Test | Crate | Real dep | Bug class caught |
+|------|-------|----------|------------------|
+| `test_full_pipeline_against_real_registry_2_container` | `cli` | Docker + `registry:2` | OCI Distribution v2 wire-shape drift between httpmock and a real registry: upload-session UUIDs, stateful HEAD-then-PUT skip-if-exists across re-publishes, manifest media-type negotiation, manifest byte-equality round-trip |
+
+Smoke tests are NOT run by `cargo test --workspace`. They run
+under:
+
+```bash
+cargo test -p swe_justoci_oci_cli --test registry_smoke_test \
+    -- --ignored --test-threads=1
+```
+
+CI's dedicated `smoke` job exercises them on `ubuntu-latest`
+(Docker pre-installed). Each smoke test prints a `SKIP` line
+on stderr and returns `Ok` when its real dep is unavailable
+on the host — local `cargo test --workspace -- --ignored` on
+a Docker-less laptop won't fail spuriously.
+
 ## What's NOT tested
 
 - **Real Sigstore Fulcio + Rekor.** The keyless flow opens a
   browser for OIDC; CI isn't equipped for that. The cosign
   subprocess + the `CosignInvoker` trait are tested with stubs.
   Real Sigstore integration is a v0.2 task using `sigstore-rs`.
-- **Real OCI registries.** httpmock covers the wire shape. An
-  env-gated `registry:2`-against-real-registry smoke test was
-  considered and deferred to v0.2.
 - **Multi-platform manifests.** v1.0 work; v0 specs target one
   platform per artifact.
 - **Range-request resumability.** v1.0 work; v0 retries the
@@ -122,6 +143,13 @@ The workflow's `fmt` job runs:
 
 ```bash
 cargo fmt --all -- --check
+```
+
+The workflow's `smoke` job runs:
+
+```bash
+cargo test -p swe_justoci_oci_cli --test registry_smoke_test \
+    -- --ignored --test-threads=1
 ```
 
 All under `RUSTFLAGS=-D warnings`. Any warning fails the build.

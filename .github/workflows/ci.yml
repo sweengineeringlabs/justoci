@@ -118,6 +118,51 @@ jobs:
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
 
+  smoke:
+    # Real-registry smoke test — runs the cargo test gated with
+    # `#[ignore]`, which spawns a `registry:2` container, drives
+    # `ocimage build → publish → verify` against it, and asserts
+    # the OCI Distribution v2 wire shape the httpmock-based tests
+    # in `test` cannot catch (upload-session UUIDs, real HEAD-then-
+    # PUT statefulness across re-publishes, manifest media-type
+    # negotiation, byte-equality of the round-trip).
+    #
+    # Requires Docker available on the runner; `ubuntu-latest`
+    # ships with Docker out of the box. The test itself prints a
+    # SKIP line and returns Ok if `docker info` fails, but on this
+    # runner the daemon is always present — a SKIP here would
+    # indicate the runner image regressed.
+    name: smoke (real registry:2)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout justoci
+        uses: actions/checkout@v4
+        with:
+          path: justoci
+
+      - name: Checkout justcas (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: sweengineeringlabs/justcas
+          path: justcas
+          token: ${{ secrets.JUSTCAS_PAT }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: justoci -> justoci/target
+
+      - name: Pre-pull registry image
+        # Speeds up the test (avoids docker-pull inside the test
+        # path) and isolates docker-hub rate-limit issues here
+        # rather than making them look like test failures.
+        run: docker pull registry:2
+
+      - name: Run smoke test
+        run: cargo test -p swe_justoci_oci_cli --test registry_smoke_test -- --ignored --test-threads=1
+        working-directory: justoci
+
   msrv:
     # Verifies the workspace still compiles on the MSRV declared in
     # the root Cargo.toml's `[workspace.package]` block. Runs `cargo
