@@ -9,6 +9,7 @@
 - [Non-container OCI artifact niche](./0-ideation/non-container-niche.md)
 - [Research notes](./0-ideation/research/README.md)
   - [OCI Distribution v2 providers](./0-ideation/research/oci-distribution-providers.md)
+  - [Apache-2.0 vs MIT](./0-ideation/research/apache-2-vs-mit.md)
 
 # Requirements
 

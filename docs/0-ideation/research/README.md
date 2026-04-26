@@ -12,6 +12,11 @@ gather facts about the surrounding ecosystem.
   hosted, self-hosted, local-test options) with auth shape,
   pricing, OCI 1.1 referrers API support, and notable quirks per
   provider.
+- [`apache-2-vs-mit.md`](./apache-2-vs-mit.md) — License-choice
+  analysis. Why justoci migrated from MIT to Apache-2.0 in
+  `b88866e`, what the patent terms actually buy, why the
+  ecosystem (OCI specs, Sigstore, CNCF projects) is overwhelmingly
+  Apache-2.0.
 
 ## When to add a new research doc
 
