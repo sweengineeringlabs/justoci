@@ -1,0 +1,41 @@
+[package]
+name = "swe_justoci_oci_publish"
+version = "0.1.0"
+edition = "2021"
+description = "oci-publish — ship a built vmisolate VM image to a sink: ADR-015 Level-2 (HTTP index + blobs) or Level-4 (OCI distribution registry)."
+license = "MIT"
+repository = "https://github.com/sweengineeringlabs/vmisolate"
+authors = ["SWE Engineering Labs"]
+rust-version = "1.86"
+
+[package.metadata.struct-engine]
+application_type = "lib"
+
+[lib]
+name = "oci_publish"
+path = "src/lib.rs"
+
+[dependencies]
+thiserror          = { workspace = true }
+tracing            = { workspace = true }
+serde              = { workspace = true }
+serde_json         = { workspace = true }
+tokio              = { workspace = true }
+sha2               = { workspace = true }
+oci-distribution   = { workspace = true }
+# oci-build owns the shared BuildArtifacts DTO and the Error enum
+# that both crates report.
+oci-build          = { workspace = true }
+attest             = { workspace = true }
+
+[dev-dependencies]
+tokio              = { workspace = true }
+
+# Integration tests for the two publish levels.
+[[test]]
+name = "http_publish_int_test"
+path = "tests/http_publish_int_test.rs"
+
+[[test]]
+name = "oci_push_int_test"
+path = "tests/oci_push_int_test.rs"

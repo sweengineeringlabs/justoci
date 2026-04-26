@@ -1,0 +1,24 @@
+[package]
+name = "swe_justoci_attest"
+version = "0.1.0"
+edition = "2021"
+description = "Supply-chain attestation vehicle — SLSA provenance + CycloneDX SBOM + cosign signing for vmisolate VM images. Scaffolds ADR-016 pillars B + C."
+license = "MIT"
+repository = "https://github.com/sweengineeringlabs/vmisolate"
+
+[lib]
+name = "attest"
+path = "src/lib.rs"
+
+[dependencies]
+thiserror    = { workspace = true }
+tracing      = { workspace = true }
+serde        = { workspace = true }
+serde_json   = { workspace = true }
+sha2         = { workspace = true }
+
+[dev-dependencies]
+# Unit tests are pure-Rust against the api/ trait surface.
+# Cosign integration is gated on ATTEST_SMOKE=1 env var — no
+# hard dep on cosign being on PATH at build time.
+tempfile = "3"

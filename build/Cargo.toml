@@ -1,0 +1,51 @@
+[package]
+name = "swe_justoci_oci_build"
+version = "0.1.0"
+edition = "2021"
+description = "oci-build — build vmisolate VM images (kernel + initrd + rootfs + config.json) from an ImageSpec. See docs/3-design/adr/015-image-registry.md."
+license = "MIT"
+repository = "https://github.com/sweengineeringlabs/vmisolate"
+authors = ["SWE Engineering Labs"]
+rust-version = "1.86"
+
+[package.metadata.struct-engine]
+application_type = "lib"
+
+[lib]
+name = "oci_build"
+path = "src/lib.rs"
+
+[dependencies]
+thiserror          = { workspace = true }
+anyhow             = { workspace = true }
+tracing            = { workspace = true }
+tracing-subscriber = { workspace = true }
+serde              = { workspace = true }
+serde_json         = { workspace = true }
+toml               = { workspace = true }
+# userspace gives us XkInitBuilder + build_ext2_image + cpio writer —
+# do NOT reimplement these, per the no-duplication audit before Phase 2f.
+userspace          = { workspace = true }
+# vmm-api gives us VmError / VolumeDeviceConfig shapes the userspace
+# builders consume.
+vmm-api            = { workspace = true }
+# chroot = host-side mount + chroot + exec primitive used by the
+# PackageInstaller and FileOverlay SPI impls (Phase 2f-α+). Trait
+# surface only — impl selection happens at orchestrator wiring time.
+chroot             = { workspace = true }
+# sha2 powers the per-artifact digests recorded in build-manifest.json
+# (#24.A). Streaming impl so multi-hundred-MB rootfs images don't
+# require holding the whole file in memory.
+sha2               = { workspace = true }
+
+# Integration tests. `error_int_test` covers `api::error::Error`
+# display formatting; `template_parse_test` parses every shipped
+# `templates/*.toml` to guarantee the reference specs stay valid
+# against the `ImageSpec` schema.
+[[test]]
+name = "error_int_test"
+path = "tests/error_int_test.rs"
+
+[[test]]
+name = "template_parse_test"
+path = "tests/template_parse_test.rs"

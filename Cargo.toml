@@ -1,0 +1,38 @@
+[workspace]
+resolver = "2"
+members = [
+    "attest",
+    "build",
+    "publish",
+    "systemd",
+    "cli",
+]
+
+[workspace.dependencies]
+# ── Internal sibling crates ────────────────────────────────────────────────
+attest      = { path = "attest",  package = "swe_justoci_attest" }
+oci-build   = { path = "build",   package = "swe_justoci_oci_build" }
+oci-publish = { path = "publish", package = "swe_justoci_oci_publish" }
+oci-systemd = { path = "systemd", package = "swe_justoci_oci_systemd" }
+
+# ── Cross-workspace path-deps — vmisolate-side crates justoci consumes ────
+# `oci-build` reads/writes ImageSpec + ConfigManifest shapes; its file
+# overlay path uses `userspace` for rootfs assembly and `chroot` for the
+# WSL/musl rootfs build, and `vmm-api` for the boot-config schema.
+# Paths walk one level up out of justoci/ into the vmisolate workspace.
+userspace = { path = "../vmisolate/main/features/userspace", package = "swe_vmisolate_userspace" }
+vmm-api   = { path = "../vmisolate/main/features/vmm-api",   package = "swe_vmisolate_vmm_api" }
+chroot    = { path = "../vmisolate/main/features/chroot",    package = "swe_vmisolate_chroot" }
+
+# ── External ──────────────────────────────────────────────────────────────
+thiserror          = "2"
+anyhow             = "1"
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+serde              = { version = "1", features = ["derive"] }
+serde_json         = "1"
+toml               = "0.8"
+clap               = { version = "4", features = ["derive", "env"] }
+tokio              = { version = "1", features = ["full"] }
+sha2               = "0.10"
+oci-distribution   = { version = "0.11", default-features = false, features = ["rustls-tls"] }

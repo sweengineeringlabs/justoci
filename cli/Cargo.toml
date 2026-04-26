@@ -1,0 +1,27 @@
+[package]
+name = "swe_justoci_oci_cli"
+version = "0.1.0"
+edition = "2021"
+description = "ocimage — operator-facing CLI that drives oci-build + oci-publish. Subcommands: build, publish-http, push."
+license = "MIT"
+repository = "https://github.com/sweengineeringlabs/vmisolate"
+authors = ["SWE Engineering Labs"]
+rust-version = "1.86"
+
+[package.metadata.struct-engine]
+application_type = "bin"
+
+# Binary-only crate. Name deliberately kept as `ocimage` — the
+# smoke-test + operator workflows reference the binary by that name.
+[[bin]]
+name = "ocimage"
+path = "src/main.rs"
+
+[dependencies]
+clap               = { workspace = true }
+anyhow             = { workspace = true }
+tracing            = { workspace = true }
+tracing-subscriber = { workspace = true }
+oci-build          = { workspace = true }
+oci-publish        = { workspace = true }
+oci-systemd        = { workspace = true }
