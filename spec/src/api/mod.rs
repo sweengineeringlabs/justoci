@@ -10,6 +10,6 @@ pub use attestation::{
 pub use error::SpecError;
 pub use loaded::LoadedSpec;
 pub use spec::{
-    ArtifactId, Compression, ConfigBlob, Kind, Layer, LayerFile, LayerSource, MediaType, Platform,
-    Spec, SpecVersion,
+    ArtifactId, Compression, ConfigBlob, Kind, Layer, LayerFile, LayerSource, MediaType,
+    MediaTypeParseError, Platform, Spec, SpecVersion,
 };

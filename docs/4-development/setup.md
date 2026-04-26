@@ -114,13 +114,12 @@ unresolved — open the workspace root (`justoci/`) instead.
 
 ## Common gotchas
 
-- **`spec::MediaType::unchecked` is `pub(crate)`.** External
-  callers can't construct a `MediaType` directly — they must
-  round-trip through TOML via `parse_and_validate_str`. This is
-  the single-validator-integrity rule from spec v0; the public
-  parse path is the only public construction path. The
-  vmisolate-side adapter works around this by emitting TOML text
-  from its `translate()` function.
+- **Constructing a `MediaType` programmatically.** Use
+  `MediaType::parse(&str) -> Result<MediaType, MediaTypeParseError>`.
+  The same grammar validator used during TOML parsing runs on the
+  string; there is no unchecked back-door. Single-validator
+  integrity is preserved by routing every `MediaType` value
+  through this gate, regardless of source.
 
 - **Path-dep refresh.** If you `git pull` on justcas, justoci's
   build picks up the change automatically (path-dep, not

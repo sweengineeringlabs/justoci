@@ -236,8 +236,14 @@ fn validate_layer(position: usize, raw: RawLayer, spec_dir: &Path) -> Result<Lay
         }
     };
 
-    // media_type grammar: type/subtype[+suffix].
-    validate_media_type_grammar(position, &raw.media_type)?;
+    // media_type: parse + validate via the public MediaType::parse.
+    // Wrap the type's own error into the layer-aware SpecError variant
+    // so callers see "layer #N media_type ..." with full context.
+    let media_type =
+        MediaType::parse(&raw.media_type).map_err(|_| SpecError::MalformedMediaType {
+            position,
+            got: raw.media_type.clone(),
+        })?;
 
     // compression: explicit value, or default keyed off media_type
     // suffix.
@@ -256,35 +262,9 @@ fn validate_layer(position: usize, raw: RawLayer, spec_dir: &Path) -> Result<Lay
 
     Ok(Layer {
         source,
-        media_type: MediaType::unchecked(raw.media_type),
+        media_type,
         compression,
     })
-}
-
-fn validate_media_type_grammar(position: usize, mt: &str) -> Result<(), SpecError> {
-    // "type/subtype" required; "+suffix" optional.
-    let Some((typ, rest)) = mt.split_once('/') else {
-        return Err(SpecError::MalformedMediaType {
-            position,
-            got: mt.to_string(),
-        });
-    };
-    if typ.is_empty() || rest.is_empty() {
-        return Err(SpecError::MalformedMediaType {
-            position,
-            got: mt.to_string(),
-        });
-    }
-    // Reject whitespace and control characters; accept the
-    // RFC 6838 "restricted-name" plus '+' for the suffix marker.
-    let valid = |c: char| c.is_ascii_alphanumeric() || matches!(c, '.' | '+' | '-' | '_');
-    if !typ.chars().all(valid) || !rest.chars().all(valid) {
-        return Err(SpecError::MalformedMediaType {
-            position,
-            got: mt.to_string(),
-        });
-    }
-    Ok(())
 }
 
 fn default_compression(media_type: &str) -> Compression {

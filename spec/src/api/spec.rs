@@ -109,20 +109,86 @@ pub struct LayerFile {
 
 /// OCI media type. Stored as a typed wrapper so callers can't pass
 /// a stray `String` to a function expecting a media type.
+///
+/// Construct via [`MediaType::parse`], which validates the OCI
+/// media-type grammar (RFC 6838 restricted-name + optional `+suffix`).
+/// There is no unchecked constructor: every `MediaType` value in the
+/// program has been through the same grammar gate, regardless of
+/// whether it came from a TOML spec or a programmatic caller.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MediaType(String);
 
 impl MediaType {
-    /// Construct without validation. Validation lives in
-    /// `core::validate`; this constructor is `pub(crate)` so external
-    /// callers go through `parse_and_validate`.
-    pub(crate) fn unchecked(s: String) -> Self {
-        MediaType(s)
+    /// Parse and validate an OCI media-type string.
+    ///
+    /// Grammar accepted (matches what the spec doc declares for
+    /// `[[layers]] media_type`):
+    ///
+    /// ```text
+    /// type "/" subtype [ "+" suffix ]
+    /// ```
+    ///
+    /// where `type`, `subtype`, and `suffix` are RFC 6838
+    /// restricted-name characters (`[a-zA-Z0-9._-]`) plus `+` for
+    /// the suffix marker. No whitespace, no control characters.
+    ///
+    /// Returns [`MediaTypeParseError::Malformed`] on rejection. The
+    /// error carries the offending input and a brief reason so
+    /// callers can surface meaningful diagnostics.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use spec::MediaType;
+    /// assert!(MediaType::parse("application/vnd.example+gzip").is_ok());
+    /// assert!(MediaType::parse("no-slash-here").is_err());
+    /// ```
+    pub fn parse(s: &str) -> Result<Self, MediaTypeParseError> {
+        // "type/subtype" required; "+suffix" optional.
+        let Some((typ, rest)) = s.split_once('/') else {
+            return Err(MediaTypeParseError::Malformed {
+                got: s.to_string(),
+                reason: "missing '/' between type and subtype",
+            });
+        };
+        if typ.is_empty() {
+            return Err(MediaTypeParseError::Malformed {
+                got: s.to_string(),
+                reason: "type before '/' cannot be empty",
+            });
+        }
+        if rest.is_empty() {
+            return Err(MediaTypeParseError::Malformed {
+                got: s.to_string(),
+                reason: "subtype after '/' cannot be empty",
+            });
+        }
+        // RFC 6838 "restricted-name" plus '+' for the suffix marker.
+        let valid = |c: char| c.is_ascii_alphanumeric() || matches!(c, '.' | '+' | '-' | '_');
+        if !typ.chars().all(valid) || !rest.chars().all(valid) {
+            return Err(MediaTypeParseError::Malformed {
+                got: s.to_string(),
+                reason: "characters outside RFC 6838 restricted-name + '+' suffix marker",
+            });
+        }
+        Ok(MediaType(s.to_string()))
     }
 
     pub fn as_str(&self) -> &str {
         &self.0
     }
+}
+
+/// Errors raised by [`MediaType::parse`].
+///
+/// Carries no positional context — `MediaType::parse` is a
+/// single-string operation. The validator wraps this into
+/// [`super::error::SpecError::MalformedMediaType`] which adds the
+/// offending layer's position when the parse happens inside a spec.
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum MediaTypeParseError {
+    #[error("media type '{got}' violates OCI grammar: {reason}")]
+    Malformed { got: String, reason: &'static str },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -176,4 +242,102 @@ pub struct Spec {
     /// the type level avoids a sort step downstream.
     pub annotations: BTreeMap<String, String>,
     pub attestation: AttestationConfig,
+}
+
+#[cfg(test)]
+mod media_type_tests {
+    use super::*;
+
+    /// Anchor: a typical OCI media type round-trips and is preserved
+    /// byte-for-byte.
+    ///
+    /// Bug it catches: a parse impl that normalised the casing or
+    /// stripped the suffix would change the wire bytes downstream
+    /// and break OCI clients that rely on exact-string media-type
+    /// matching.
+    #[test]
+    fn test_parse_canonical_oci_media_type_round_trips() {
+        let input = "application/vnd.oci.image.manifest.v1+json";
+        let mt = MediaType::parse(input).expect("canonical OCI media type must parse");
+        assert_eq!(mt.as_str(), input);
+    }
+
+    /// Vendor types under our own prefix parse — proves the grammar
+    /// accepts the artifact-kind media types the spec-v0 examples use.
+    #[test]
+    fn test_parse_vmisolate_kernel_media_type_accepts_plus_suffix() {
+        let input = "application/vnd.vmisolate.kernel+binary";
+        assert!(
+            MediaType::parse(input).is_ok(),
+            "must accept '+suffix' form"
+        );
+    }
+
+    /// No slash → Malformed.
+    ///
+    /// Bug it catches: a parser that accepted any non-empty string
+    /// would pass `"my-blob"` straight through to the OCI manifest,
+    /// where registries would then reject it at upload time with a
+    /// less specific error.
+    #[test]
+    fn test_parse_rejects_input_without_slash() {
+        let err = MediaType::parse("no-slash-here").expect_err("must reject");
+        assert!(matches!(err, MediaTypeParseError::Malformed { .. }));
+        assert!(err.to_string().contains("no-slash-here"));
+    }
+
+    /// Empty type before slash → Malformed.
+    #[test]
+    fn test_parse_rejects_empty_type() {
+        let err = MediaType::parse("/subtype").expect_err("must reject");
+        match err {
+            MediaTypeParseError::Malformed { reason, .. } => {
+                assert!(
+                    reason.contains("type"),
+                    "reason must mention type: {reason}"
+                );
+            }
+        }
+    }
+
+    /// Empty subtype after slash → Malformed.
+    #[test]
+    fn test_parse_rejects_empty_subtype() {
+        let err = MediaType::parse("application/").expect_err("must reject");
+        match err {
+            MediaTypeParseError::Malformed { reason, .. } => {
+                assert!(
+                    reason.contains("subtype"),
+                    "reason must mention subtype: {reason}"
+                );
+            }
+        }
+    }
+
+    /// Whitespace anywhere → Malformed.
+    ///
+    /// Bug it catches: a parser that tolerated spaces would propagate
+    /// trailing whitespace into manifest digests; two specs that
+    /// differed only in trailing space would compute different
+    /// digests, breaking reproducibility.
+    #[test]
+    fn test_parse_rejects_internal_whitespace() {
+        let err = MediaType::parse("application/vnd. oci.foo").expect_err("must reject space");
+        assert!(matches!(err, MediaTypeParseError::Malformed { .. }));
+    }
+
+    /// Control characters → Malformed.
+    #[test]
+    fn test_parse_rejects_control_chars() {
+        let err = MediaType::parse("application/vnd\x00.foo").expect_err("must reject NUL");
+        assert!(matches!(err, MediaTypeParseError::Malformed { .. }));
+    }
+
+    /// Display includes the offending input — operators see the bad
+    /// value, not just "media type was wrong".
+    #[test]
+    fn test_parse_error_display_carries_input() {
+        let err = MediaType::parse("bad value").expect_err("must reject");
+        assert!(err.to_string().contains("bad value"));
+    }
 }

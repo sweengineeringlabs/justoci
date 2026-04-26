@@ -24,8 +24,8 @@ pub mod saf;
 
 pub use api::{
     ArtifactId, AttestationConfig, Compression, ConfigBlob, Kind, Layer, LayerFile, LayerSource,
-    LoadedSpec, MediaType, Platform, SbomConfig, SbomFormat, SbomScope, SignConfig, SignKind,
-    SlsaConfig, SlsaLevel, Spec, SpecError, SpecVersion,
+    LoadedSpec, MediaType, MediaTypeParseError, Platform, SbomConfig, SbomFormat, SbomScope,
+    SignConfig, SignKind, SlsaConfig, SlsaLevel, Spec, SpecError, SpecVersion,
 };
 pub use saf::{
     canonical_bytes, parse_and_validate, parse_and_validate_str, spec_hash, CanonicalizationError,
