@@ -2,9 +2,9 @@
 name = "swe_justoci_oci_build"
 version = "0.1.0"
 edition = "2021"
-description = "oci-build — build vmisolate VM images (kernel + initrd + rootfs + config.json) from an ImageSpec. See docs/3-design/adr/015-image-registry.md."
+description = "oci-build — assemble an OCI Image Spec v1.1 layout from a justoci `Spec`. Deterministic layer/config/manifest blobs in a content-addressed store."
 license = "MIT"
-repository = "https://github.com/sweengineeringlabs/vmisolate"
+repository = "https://github.com/sweengineeringlabs/justoci"
 authors = ["SWE Engineering Labs"]
 rust-version = "1.86"
 
@@ -16,36 +16,69 @@ name = "oci_build"
 path = "src/lib.rs"
 
 [dependencies]
+# Typed errors. `anyhow` deliberately omitted: the public surface of
+# `BuildError` is a typed enum so callers can match on actionable
+# variants instead of stringly-typed wrappers.
 thiserror          = { workspace = true }
-anyhow             = { workspace = true }
 tracing            = { workspace = true }
-tracing-subscriber = { workspace = true }
 serde              = { workspace = true }
 serde_json         = { workspace = true }
-toml               = { workspace = true }
-# userspace gives us XkInitBuilder + build_ext2_image + cpio writer —
-# do NOT reimplement these, per the no-duplication audit before Phase 2f.
-userspace          = { workspace = true }
-# vmm-api gives us VmError / VolumeDeviceConfig shapes the userspace
-# builders consume.
-vmm-api            = { workspace = true }
-# chroot = host-side mount + chroot + exec primitive used by the
-# PackageInstaller and FileOverlay SPI impls (Phase 2f-α+). Trait
-# surface only — impl selection happens at orchestrator wiring time.
-chroot             = { workspace = true }
-# sha2 powers the per-artifact digests recorded in build-manifest.json
-# (#24.A). Streaming impl so multi-hundred-MB rootfs images don't
-# require holding the whole file in memory.
+# Justoci spec — the input contract for the build pipeline.
+spec               = { workspace = true }
+# Content-addressed storage. Every layer / config / manifest blob
+# lands in a `Cas` so partial writes never become visible blobs and
+# duplicate writes are deduplicated by content.
+cas                = { workspace = true }
+# Streaming sha256, paired with `cas` for blob digests we hand into
+# the OCI manifest as descriptor digests.
 sha2               = { workspace = true }
+hex                = "0.4"
+# Layer compression backends. Enabled per-layer based on the spec's
+# `Compression` value — no implicit compression.
+flate2             = "1"
+zstd               = "0.13"
+# Tar layer assembly. `LayerSource::Files` becomes a deterministic
+# tar via this crate's manual `Header` API — sorted entries, mtime=0,
+# uid:gid=0:0, mode from spec.
+tar                = "0.4"
+# Legacy types (`ImageSpec`, `BuildArtifacts`, `BuildManifest`) are
+# kept as plain serde data so sibling crates (`oci-publish`, the
+# `cli`) compile against the existing field shapes while their own
+# refactors are pending. `toml` is used by the legacy `BuildManifest`
+# JSON serialiser tests.
+toml               = { workspace = true }
 
-# Integration tests. `error_int_test` covers `api::error::Error`
-# display formatting; `template_parse_test` parses every shipped
-# `templates/*.toml` to guarantee the reference specs stay valid
-# against the `ImageSpec` schema.
+[dev-dependencies]
+# Tempdir-backed integration tests stage source files alongside specs.
+tempfile           = "3"
+
+# Integration test surface. `vm_image_build_test` covers a 3-layer
+# vm_image end-to-end; `reproducibility_test` is the
+# Production-Guarantees-§2 gate; `oci_artifact_build_test` exercises
+# the single-layer no-compression path; `tar_determinism_test`
+# anchors the deterministic tar invariants; `compression_test` proves
+# gzip / zstd produce different bytes than `none`; `atomicity_test`
+# proves a failed build leaves a `.partial` dir and no final dir.
 [[test]]
-name = "error_int_test"
-path = "tests/error_int_test.rs"
+name = "vm_image_build_test"
+path = "tests/vm_image_build_test.rs"
 
 [[test]]
-name = "template_parse_test"
-path = "tests/template_parse_test.rs"
+name = "reproducibility_test"
+path = "tests/reproducibility_test.rs"
+
+[[test]]
+name = "oci_artifact_build_test"
+path = "tests/oci_artifact_build_test.rs"
+
+[[test]]
+name = "tar_determinism_test"
+path = "tests/tar_determinism_test.rs"
+
+[[test]]
+name = "compression_test"
+path = "tests/compression_test.rs"
+
+[[test]]
+name = "atomicity_test"
+path = "tests/atomicity_test.rs"

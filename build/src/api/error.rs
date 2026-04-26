@@ -1,52 +1,37 @@
-//! Error types for ocimage.
+//! Legacy error type kept so sibling crates (`oci-publish`, the
+//! `cli`) continue to compile while their own refactors land. New
+//! pipeline code uses [`crate::api::build_error::BuildError`].
+//!
+//! Variants here are pruned: `Chroot`, `Initrd`, `Package`,
+//! `BaseRootfsNotFound`, and `KernelNotFound` were tied to the
+//! vmisolate-coupled image builder that moved out of this crate.
+//! The remaining variants are still used by external consumers and
+//! the surviving shape preserves their field layouts so callers
+//! match exactly as before.
 
-/// Errors raised by the image-build pipeline.
+/// Errors raised by legacy publish / artifact-loading paths.
+///
+/// The new spec-driven build pipeline returns
+/// [`crate::api::build_error::BuildError`] instead. The two enums
+/// are intentionally distinct: an operator looking at a typed
+/// error should see "this came from the build pipeline" or "this
+/// came from the publish pipeline" without ambiguity.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// Filesystem / process-spawn / read-write failure.
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 
-    /// Configuration or CLI-argument error that's the user's
-    /// fault, not a bug. Maps to a non-zero CLI exit code with
-    /// `message` printed verbatim to stderr.
+    /// Configuration or CLI-argument error that's the user's fault,
+    /// not a bug. Maps to a non-zero CLI exit code with `message`
+    /// printed verbatim to stderr.
     #[error("configuration error: {message}")]
     Config { message: String },
 
     /// A spec TOML file failed to parse, OR passed parsing but
-    /// failed semantic validation (e.g., non-empty `packages`
-    /// list in Phase 2f-α). `reason` names the specific field.
+    /// failed semantic validation. `reason` names the specific field.
     #[error("invalid image spec: {reason}")]
     SpecInvalid { reason: String },
-
-    /// The base rootfs file referenced by the spec isn't on the
-    /// filesystem. Usually a typo in `base.path` or a missing
-    /// `bootstrap.sh` run.
-    #[error("base rootfs not found: {path}")]
-    BaseRootfsNotFound { path: String },
-
-    /// The kernel bzImage the build pipeline needs to stage
-    /// isn't where we expected. Same cause as `BaseRootfsNotFound`
-    /// — the `bootstrap.sh` step didn't run or produced files
-    /// in a different layout.
-    #[error("kernel not found: {path} — run bootstrap.sh to produce it")]
-    KernelNotFound { path: String },
-
-    /// Initrd construction failed inside the `userspace` crate
-    /// (cpio writer, xkvm-fs binary read, config.json generation).
-    #[error("initrd construction failed: {reason}")]
-    Initrd { reason: String },
-
-    /// A package manager rejected a package list. Not emitted in
-    /// Phase 2f-α (package install is stubbed). `family` is the
-    /// installer family (`apk` / `apt` / …); `packages` is the
-    /// argv it tried; `reason` is the tool's stderr tail.
-    #[error("{family} failed to install {packages:?}: {reason}")]
-    Package {
-        family: &'static str,
-        packages: Vec<String>,
-        reason: String,
-    },
 
     /// Serde-layer failure — TOML parse or JSON write. Forwarded
     /// from the underlying library so callers can match on it
@@ -72,16 +57,9 @@ pub enum Error {
     /// The OCI registry couldn't be reached — DNS, TLS, HTTP 5xx,
     /// or auth-token exchange failed. Distinct from `Publish` so
     /// operators can tell "my image is wrong" from "the registry
-    /// is down." Only emitted by the Level 4 push path.
+    /// is down."
     #[error("registry {registry} unreachable: {reason}")]
     RegistryUnreachable { registry: String, reason: String },
-
-    /// Host-side chroot substrate failure — surfaces mount, exec,
-    /// copy_in, or write_file errors from the `chroot` crate. Only
-    /// emitted by the Phase 2f-α+ package-install / file-overlay
-    /// paths.
-    #[error("chroot: {0}")]
-    Chroot(#[from] chroot::ChrootError),
 }
 
 impl From<toml::de::Error> for Error {
@@ -101,7 +79,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_io_error_wraps_source() {
+    fn test_io_error_display_mentions_io() {
+        // Bug this would catch: a refactor that swaps the `Display`
+        // string and breaks CLI output that grep-matches on "I/O".
         let err = Error::Io(std::io::Error::new(
             std::io::ErrorKind::NotFound,
             "missing",
@@ -111,30 +91,42 @@ mod tests {
 
     #[test]
     fn test_spec_invalid_display_carries_reason() {
+        // Bug this would catch: a `Display` impl that forgets to
+        // include the `reason` field, leaving operators with a
+        // useless "invalid image spec:" message.
         let err = Error::SpecInvalid {
-            reason: "packages field unsupported in 2f-α".into(),
+            reason: "packages field unsupported".into(),
         };
         assert!(err.to_string().contains("packages field unsupported"));
     }
 
     #[test]
-    fn test_base_rootfs_not_found_display_carries_path() {
-        let err = Error::BaseRootfsNotFound {
-            path: "/nonexistent.ext4".into(),
-        };
-        assert!(err.to_string().contains("/nonexistent.ext4"));
+    fn test_serde_from_toml_round_trips_error_text() {
+        // Bug this would catch: the `From<toml::de::Error>` impl
+        // dropping the underlying parser message, leaving callers
+        // unable to point at the offending TOML line.
+        let bad_toml = "spec_version = \n";
+        let toml_err = toml::from_str::<toml::Value>(bad_toml).unwrap_err();
+        let toml_err_text = toml_err.to_string();
+        let our_err: Error = toml_err.into();
+        match our_err {
+            Error::Serde(msg) => assert_eq!(msg, toml_err_text),
+            other => panic!("expected Error::Serde, got {other:?}"),
+        }
     }
 
     #[test]
-    fn test_package_error_includes_family_and_packages() {
-        let err = Error::Package {
-            family: super::super::manifest::INSTALLER_FAMILY_ALPINE_APK,
-            packages: vec!["foo".into(), "bar".into()],
-            reason: "mirror down".into(),
+    fn test_artifact_missing_carries_which_and_dir() {
+        // Bug this would catch: a regression that prints the dir
+        // but not the missing artifact name (or vice-versa) — the
+        // operator wouldn't know whether to fix the path or rerun
+        // the previous build step.
+        let err = Error::ArtifactMissing {
+            which: "kernel",
+            dir: "/tmp/out".into(),
         };
         let s = err.to_string();
-        assert!(s.contains("alpine_apk"));
-        assert!(s.contains("foo"));
-        assert!(s.contains("mirror down"));
+        assert!(s.contains("kernel"));
+        assert!(s.contains("/tmp/out"));
     }
 }
