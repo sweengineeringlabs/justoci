@@ -2,9 +2,9 @@
 name = "swe_justoci_oci_publish"
 version = "0.1.0"
 edition = "2021"
-description = "oci-publish — ship a built vmisolate VM image to a sink: ADR-015 Level-2 (HTTP index + blobs) or Level-4 (OCI distribution registry)."
+description = "justoci publish — push a built OCI image directory to a sink: HTTP (ADR-015 Level-2 static dir) or OCI Distribution registry (Level-4)."
 license = "MIT"
-repository = "https://github.com/sweengineeringlabs/vmisolate"
+repository = "https://github.com/sweengineeringlabs/justoci"
 authors = ["SWE Engineering Labs"]
 rust-version = "1.86"
 
@@ -16,26 +16,72 @@ name = "oci_publish"
 path = "src/lib.rs"
 
 [dependencies]
-thiserror          = { workspace = true }
-tracing            = { workspace = true }
-serde              = { workspace = true }
-serde_json         = { workspace = true }
-tokio              = { workspace = true }
-sha2               = { workspace = true }
-oci-distribution   = { workspace = true }
-# oci-build owns the shared BuildArtifacts DTO and the Error enum
-# that both crates report.
-oci-build          = { workspace = true }
-attest             = { workspace = true }
+thiserror        = { workspace = true }
+serde            = { workspace = true }
+serde_json       = { workspace = true }
+# Direct OCI Distribution v2 wire calls — HEAD blob, POST/PUT blob,
+# PUT manifest. We don't go through `oci-distribution` because we need
+# fine-grained control over per-blob HEAD-then-PUT (skip-if-exists),
+# strict push ordering (manifest LAST), and httpmock-driven integration
+# tests. `reqwest` is already in the dep tree transitively via
+# `oci-distribution` so this is not a new build-graph cost.
+reqwest          = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "blocking"] }
+# Spec is the source of truth for what an OCI image dir looks like —
+# media type grammar, kind-specific layer rules, validation contract
+# every other crate inherits. Declared per Phase 1 Worker C contract;
+# v0 publish reads validated dirs only, so usage is structural — once
+# the verify crate (P2) lands, publish will read Spec values too.
+spec             = { workspace = true }
+# Content-addressed storage. The OCI image dir layout IS an FsCas-
+# compatible layout (`<dir>/blobs/sha256/<hex>`). Used today only for
+# `cas::CasError` propagation through `PublishError::Cas`; richer
+# integration (mounting the input as a read-only FsCas to walk it)
+# arrives when verify lands and shares this code.
+cas              = { workspace = true }
 
 [dev-dependencies]
-tokio              = { workspace = true }
+# httpmock fakes the OCI Distribution registry endpoint at the HTTP
+# layer. Lets us assert the exact HEAD/PUT call sequence the registry
+# sink emits — proving idempotency, push order, and resumability
+# without standing up `registry:2`.
+httpmock         = "0.7"
+# Tempdir-backed integration tests. Each test stages an OCI image dir
+# into a fresh tempdir; tempfile guarantees cleanup even on assertion
+# failure (an `fs::remove_dir_all` in test code does not).
+tempfile         = "3"
+# Used by tests to compute expected sha256 digests independently from
+# the impl, so a regression in our hash code can't make a test pass
+# tautologically.
+sha2             = { workspace = true }
 
-# Integration tests for the two publish levels.
 [[test]]
-name = "http_publish_int_test"
-path = "tests/http_publish_int_test.rs"
+name = "image_dir_validation_test"
+path = "tests/image_dir_validation_test.rs"
 
 [[test]]
-name = "oci_push_int_test"
-path = "tests/oci_push_int_test.rs"
+name = "http_publish_full_test"
+path = "tests/http_publish_full_test.rs"
+
+[[test]]
+name = "http_publish_idempotent_test"
+path = "tests/http_publish_idempotent_test.rs"
+
+[[test]]
+name = "http_atomic_index_test"
+path = "tests/http_atomic_index_test.rs"
+
+[[test]]
+name = "registry_publish_test"
+path = "tests/registry_publish_test.rs"
+
+[[test]]
+name = "registry_resumable_test"
+path = "tests/registry_resumable_test.rs"
+
+[[test]]
+name = "registry_manifest_is_last_test"
+path = "tests/registry_manifest_is_last_test.rs"
+
+[[test]]
+name = "referrer_blobs_pushed_test"
+path = "tests/referrer_blobs_pushed_test.rs"
