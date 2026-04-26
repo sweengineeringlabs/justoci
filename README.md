@@ -1,5 +1,7 @@
 # justoci
 
+[![CI](https://github.com/sweengineeringlabs/justoci/actions/workflows/ci.yml/badge.svg)](https://github.com/sweengineeringlabs/justoci/actions/workflows/ci.yml)
+
 **One TOML file → attested OCI artifact, for any artifact type.**
 
 `justoci` is an opinionated build / publish / attest pipeline for
@@ -118,6 +120,33 @@ the full list. Highlights:
 cargo build --workspace
 cargo test  --workspace
 ```
+
+## Developing locally
+
+justoci's `Cargo.toml` has a path-dep on the sibling
+[`justcas`](../justcas) repo. Clone both as siblings:
+
+```
+mkdir swelabs && cd swelabs
+git clone git@github.com:sweengineeringlabs/justoci.git
+git clone git@github.com:sweengineeringlabs/justcas.git
+cd justoci && cargo build --workspace
+```
+
+CI runs the same layout: `actions/checkout` puts justoci in
+`./justoci` and justcas in `./justcas`, then runs cargo from
+`./justoci`. The justcas checkout in CI requires a
+`JUSTCAS_PAT` secret on the justoci repo (Personal Access Token
+with `repo` scope) because justcas is private and the default
+`GITHUB_TOKEN` can't read across repos. **Without `JUSTCAS_PAT`,
+the workflow's first run fails on the cross-repo checkout step.**
+
+Setup:
+
+1. Create a fine-grained PAT at https://github.com/settings/personal-access-tokens
+   with read access to `sweengineeringlabs/justcas`.
+2. On the justoci repo: Settings → Secrets and variables → Actions
+   → New repository secret → name `JUSTCAS_PAT`, value the PAT.
 
 ## Status
 
