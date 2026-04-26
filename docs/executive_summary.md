@@ -38,11 +38,21 @@ justoci packages the opinion: ship to prod, ship attested.
 ## Status
 
 v0 frozen. Five CLI subcommands working end-to-end (build, publish,
-verify, sbom, inspect). 258 tests across the workspace, every test
-named with the bug it would catch (no smoke tests, no tautological
-assertions). CI runs on every push under `RUSTFLAGS=-D warnings`
-with cosign installed in the runner so the cosign-on-PATH probe is
-exercised against real cosign in CI.
+verify, sbom, inspect). **~286 default-feature tests across the
+workspace, every test named with the bug it would catch** (no smoke
+tests, no tautological assertions). CI runs on every push under
+`RUSTFLAGS=-D warnings` with cosign installed in the runner so the
+cosign-on-PATH probe is exercised against real cosign in CI.
+
+Plus 14 `#[ignore]`-gated tests for real-dep integration:
+- Cosign-on-PATH probe (covered by CI's `cosign-installer` step).
+- Real `registry:2` Docker container (covered by CI's `smoke` job).
+- `examples/dogfood/run.sh` end-to-end pipeline (manual + Docker).
+- Vault dev-server provider tests (issue #22 wires the CI job).
+- Sigstore staging e2e harness (CI job wired; SKIP-passes pending
+  upstream `sigstore/sigstore-rs#562`).
+- Cross-language JCS verification — Go (`gowebpki/jcs`) mandatory in
+  CI; Python (`pyjcs`) optional, ships verifier alongside.
 
 ## The spec, distilled
 
@@ -98,8 +108,17 @@ sibling repo, content-addressed-storage primitive.
 
 ## Roadmap
 
-- v0 (shipped): everything above.
-- v0.2 (in flight): `[[files]]` overlay support for `vm_image`,
-  `sigstore-rs` migration to drop the cosign subprocess.
-- v1.0: multi-platform manifests, registry-pull resumability via
-  HTTP range requests, parallel layer downloads.
+- v0 (shipped): everything above + sigstore-rs SDK migration (#13)
+  + Vault and Docker-config credential providers (#15 / #16) +
+  CredentialProvider trait surface (#17) + cross-language JCS
+  fixture set (#10) + license migration to Apache-2.0.
+- v0.2 (next): `[[files]]` overlay support (vmisolate#70),
+  HTTP Range-resumable pulls (#8), parallel layer downloads (#9),
+  crates.io publication (#12), CI vault-e2e job (#22),
+  credHelpers subprocess delegation (#20).
+- v1.0: multi-platform manifests (#11). Tracked
+  upstream-blocked: real Sigstore staging end-to-end signing
+  (issue #21 / `sigstore/sigstore-rs#562`).
+
+See `docs/2-planning/roadmap.md` for the full table with commit
+hashes.

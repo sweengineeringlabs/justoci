@@ -56,17 +56,21 @@ isn't broken before any individual rule test fires. It does
 
 ## Per-crate test counts
 
-| Crate | Tests | Bug classes covered |
-|-------|------:|---------------------|
-| `justcas/cas` | 20 | digest format, atomic put, integrity-on-read, gc, streaming, concurrent put |
-| `spec` | 32 | parse, validate every rule, JCS canonicalisation determinism + content-sensitivity, cross-language fixture self-consistency |
-| `build` | 50 | reproducibility, atomic build, streaming compression, deterministic tar, kind-aware layer count, descriptor verbatim media types |
-| `attest` | 29 | SLSA structure + reproducibility, CycloneDX/SPDX shape, opt-out per pillar, sign+Rekor coupling, CosignNotInstalled mapping |
-| `publish` | 47 | image-dir validation, http skip-if-exists, http atomic index, registry HEAD-then-PUT, registry resumable, registry manifest-last, referrers pushed |
-| `cli` | 102 | exit-code mapping per error class, build / publish / verify / sbom / inspect happy paths, registry-pull (incl. token dance, 5xx retry, digest mismatch rejection) |
-| **total** | **~280** | |
+| Crate | Default | Full features | Bug classes covered |
+|-------|--------:|--------------:|---------------------|
+| `justcas/cas` | 20 | 20 | digest format, atomic put, integrity-on-read, gc, streaming, concurrent put |
+| `spec` | 37 | 37 | parse, validate every rule (incl. public `MediaType::parse`), JCS canonicalisation determinism + content-sensitivity, cross-language fixture self-consistency |
+| `build` | 50 | 50 | reproducibility, atomic build, streaming compression, deterministic tar, kind-aware layer count, descriptor verbatim media types |
+| `attest` | 44 | 44 | SLSA structure + reproducibility, CycloneDX/SPDX shape, opt-out per pillar, sign+Rekor coupling (sigstore-rs SDK + cosign-subprocess fallback), CosignNotInstalled mapping |
+| `publish` | 47 | 47 | image-dir validation, http skip-if-exists, http atomic index, registry HEAD-then-PUT, registry resumable, registry manifest-last, referrers pushed |
+| `cli` | ~108 | ~128 | exit-code mapping per error class, all 5 subcommands, registry-pull (incl. token dance, 5xx retry, digest mismatch rejection), `--require-referrers` strict mode, `CredentialProvider` chain composition (env / basic / bearer; vault + docker-config under feature flags) |
+| **total** | **~306** | **~326** | |
 
 Each row is a real bug-class count, not a line-of-code count.
+
+The "full features" column adds the `vault` + `docker-config`
+provider tests. Default builds skip them — the providers are
+opt-in via Cargo features so the default binary stays lean.
 
 ## Test environment expectations
 

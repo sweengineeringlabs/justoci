@@ -167,17 +167,40 @@ Setup:
 
 ## Status
 
-v0 — frozen spec format, all five CLI subcommands working, ~250 tests
-across the workspace. Each test names a real bug it would catch
-(no smoke / tautological tests).
+v0 frozen — spec format stable, all five CLI subcommands working
+end-to-end. **~306 default-feature tests across the workspace**
+(plus ~20 more under feature flags; see
+[`docs/5-testing/strategy.md`](docs/5-testing/strategy.md)). Every
+test names a real bug it would catch — no smoke or tautological
+tests.
+
+Recently shipped (post-v0 dossier — see
+[`docs/2-planning/roadmap.md`](docs/2-planning/roadmap.md) for
+the full table):
+
+- **sigstore-rs SDK migration** replaces the cosign subprocess as
+  the production signer (cosign fallback retained behind the
+  `cosign-subprocess` Cargo feature). §6 Rekor-coupling preserved
+  at the SDK level.
+- **`CredentialProvider` trait surface** with built-in env / basic /
+  bearer providers + opt-in `vault` and `docker-config` providers
+  behind Cargo features. Default binary stays lean (+22 KiB for
+  docker-config, +862 KiB for vault when features are enabled).
+- **Cross-language JCS fixture set** verifies hash portability
+  against Go's `gowebpki/jcs` and Python's `pyjcs` byte-for-byte —
+  the load-bearing test for the "spec hash is reproducible across
+  re-implementations" guarantee.
+- **License migrated to Apache-2.0** (was MIT). Aligns with OCI
+  specs, Sigstore, every CNCF project.
 
 What's next on the roadmap:
 
-- **`[[files]]` overlay** for vm_image kind — derived rootfs assembly
-  with file overlay applied at build time.
-- **`sigstore-rs`** in `attest` — replace the cosign subprocess shell-out
-  with linked-in signing (no PATH dependency in production).
-- **Multi-platform manifests** (`spec_version = "1"` work).
+- **`[[files]]` overlay** for `vm_image` — derived rootfs assembly
+  (vmisolate#70).
+- **HTTP Range-resumable pulls** + **parallel layer downloads**
+  — issues #8 + #9.
+- **crates.io publication** — issue #12.
+- **Multi-platform manifests** — `spec_version = "1"` (issue #11).
 
 ## Sibling repos
 
