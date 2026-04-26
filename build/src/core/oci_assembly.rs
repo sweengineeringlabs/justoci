@@ -220,6 +220,7 @@ mod tests {
     fn parse_spec(toml_text: &str, dir: &std::path::Path) -> Spec {
         spec::parse_and_validate_str(toml_text, dir.to_path_buf())
             .expect("test spec must validate")
+            .spec
     }
 
     #[test]

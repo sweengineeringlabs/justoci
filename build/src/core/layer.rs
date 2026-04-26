@@ -1,48 +1,56 @@
 //! Per-layer assembly: source bytes → optional compression → CAS.
 //!
-//! For each `Layer` the pipeline:
+//! Two source modes:
 //!
-//! 1. Materialises the **uncompressed bytes**: read a `Blob` source
-//!    file, or build a deterministic tar from a `Files` source.
-//! 2. Applies the layer's `Compression` (None / Gzip / Zstd) to those
-//!    bytes. The compressed bytes are what land in the CAS, so the
-//!    descriptor digest is the digest of the *compressed* form.
-//!    Registries content-address compressed blobs; consumers
-//!    decompress on extract.
-//! 3. Streams the (possibly compressed) bytes to the `Cas`. The CAS
-//!    is responsible for atomicity (tmp-file + rename).
+//! - **`Blob`** (a path to a pre-built file): streamed through the
+//!   compression encoder directly into `Cas::put_stream` — no
+//!   intermediate `Vec<u8>` is materialised. A multi-GB rootfs.ext4
+//!   layer flows file → encoder → CAS in 64 KiB chunks, peaking at
+//!   roughly the encoder's internal buffer plus the CAS's tmp-file
+//!   write buffer (kilobytes, not gigabytes).
 //!
-//! Compression uses a fixed level for each codec so the same source
-//! → same compressed bytes → same digest. Encoder defaults vary by
-//! version; we pin explicitly:
+//! - **`Files`** (a deterministic tar from `[[layers.files]]`):
+//!   built into a `Vec<u8>` then streamed. The tar must be built
+//!   in memory or to a tempfile to sort entries; we choose memory
+//!   because `[[layers.files]]` is bounded by design (config blobs,
+//!   a handful of small files — never multi-GB datasets, which
+//!   should use `Blob`).
 //!
-//! - **Gzip**: `flate2::Compression::default()` is level 6 — matches
-//!   the gzip command-line default and is what most CI pipelines hit.
-//!   Pinning explicitly so a flate2 upgrade doesn't shift bytes.
-//! - **Zstd**: level 3 — zstd's documented "default" and what the
-//!   `zstd` CLI emits with no flags.
+//! For each layer the pipeline:
 //!
-//! ## Why compress before hashing
+//! 1. Materialises the **uncompressed bytes** as a `Read`.
+//! 2. Wraps in a streaming compression encoder if the layer's
+//!    `Compression` is Gzip / Zstd. None passes through unchanged.
+//! 3. Wraps in a `CountingReader` so we capture the compressed-byte
+//!    count for the OCI descriptor's `size` field — the OCI manifest
+//!    must report the exact byte count of the blob the registry
+//!    will store, and we don't know it until compression is done.
+//! 4. Hands the chained reader to `cas.put_stream`. The CAS hashes
+//!    incrementally and atomically writes via tmp-file + rename.
 //!
-//! OCI consumers identify blobs by the digest of the compressed
-//! payload (it's what the registry stores and what the Distribution
-//! API serves). If we hashed the uncompressed bytes, we'd store one
-//! payload but advertise a different digest in the manifest — every
-//! `oras pull` / `crane pull` would refuse the artifact.
+//! The compressed bytes are what land in the CAS; the descriptor
+//! digest is the digest of the *compressed* form. Registries
+//! content-address compressed blobs.
+//!
+//! Compression levels are pinned for reproducibility:
+//!
+//! - **Gzip**: `flate2::Compression::default()` (level 6, matches
+//!   command-line `gzip`). Pinning explicitly so a flate2 upgrade
+//!   doesn't shift bytes.
+//! - **Zstd**: level 3 (zstd's documented default).
 
 use std::fs::File;
 use std::io::{self, Cursor, Read};
+use std::path::Path;
 
 use cas::{Cas, Digest};
-use flate2::write::GzEncoder;
+use flate2::read::GzEncoder;
 use flate2::Compression as GzipLevel;
 use spec::{Compression, Layer, LayerSource};
 
 use crate::api::build_error::BuildError;
 use crate::api::oci_manifest::OciDescriptor;
 use crate::core::tar_builder::build_deterministic_tar;
-
-use std::path::Path;
 
 /// Result of putting one layer through the pipeline.
 #[derive(Debug)]
@@ -56,50 +64,43 @@ pub struct LayerResult {
 /// an OCI descriptor + digest + byte count.
 ///
 /// The descriptor's `mediaType` is the spec's media type *verbatim*
-/// — the spec doc says vendor types like
-/// `application/vnd.vmisolate.kernel+binary` survive into the
-/// manifest unchanged so consumers can identify the artifact kind
-/// from the manifest alone.
+/// — vendor types like `application/vnd.vmisolate.kernel+binary`
+/// survive into the manifest unchanged so consumers can identify
+/// the artifact kind from the manifest alone.
 pub fn assemble_layer(
     layer: &Layer,
     position: usize,
     spec_dir: &Path,
     cas: &dyn Cas,
 ) -> Result<LayerResult, BuildError> {
-    // Step 1: uncompressed bytes.
-    let raw_bytes: Vec<u8> = match &layer.source {
+    let (digest, size) = match &layer.source {
         LayerSource::Blob { path } => {
             let resolved = if path.is_absolute() {
                 path.clone()
             } else {
                 spec_dir.join(path)
             };
-            read_file_to_vec(&resolved).map_err(|source| BuildError::Io {
+            let file = File::open(&resolved).map_err(|source| BuildError::Io {
                 path: resolved.clone(),
                 source,
-            })?
+            })?;
+            stream_through_compression(layer.compression, file, position, cas)?
         }
-        LayerSource::Files { entries } => build_deterministic_tar(entries, spec_dir)
-            .map_err(|source| BuildError::TarBuild { position, source })?,
+        LayerSource::Files { entries } => {
+            // [[layers.files]] is bounded — we accept the in-memory
+            // tar build for v0. If a future use case wants huge
+            // [[layers.files]] tars, the tar builder needs a
+            // streaming variant; not blocking v0.
+            let tar_bytes = build_deterministic_tar(entries, spec_dir)
+                .map_err(|source| BuildError::TarBuild { position, source })?;
+            stream_through_compression(
+                layer.compression,
+                Cursor::new(tar_bytes),
+                position,
+                cas,
+            )?
+        }
     };
-
-    // Step 2: optional compression.
-    let final_bytes = match layer.compression {
-        Compression::None => raw_bytes,
-        Compression::Gzip => gzip_encode(&raw_bytes)
-            .map_err(|source| BuildError::LayerCompression { position, source })?,
-        Compression::Zstd => zstd_encode(&raw_bytes)
-            .map_err(|source| BuildError::LayerCompression { position, source })?,
-    };
-
-    let size = final_bytes.len() as u64;
-
-    // Step 3: write to CAS. Stream so that future large-blob layer
-    // sources don't have to be in memory twice.
-    let mut cursor = Cursor::new(&final_bytes);
-    let digest = cas
-        .put_stream(&mut cursor)
-        .map_err(|source| BuildError::LayerWrite { position, source })?;
 
     let descriptor = OciDescriptor {
         media_type: layer.media_type.as_str().to_string(),
@@ -115,47 +116,103 @@ pub fn assemble_layer(
     })
 }
 
-fn read_file_to_vec(path: &Path) -> io::Result<Vec<u8>> {
-    let mut f = File::open(path)?;
-    let mut buf = Vec::new();
-    f.read_to_end(&mut buf)?;
-    Ok(buf)
+/// Stream `source` through the configured compression encoder into
+/// `cas.put_stream`. Returns the resulting digest and the
+/// **compressed-byte count** (the value the OCI descriptor's `size`
+/// field must hold).
+///
+/// The caller passes `position` so we can pin compression failures
+/// to the right layer in error context.
+fn stream_through_compression<R: Read>(
+    compression: Compression,
+    source: R,
+    position: usize,
+    cas: &dyn Cas,
+) -> Result<(Digest, u64), BuildError> {
+    match compression {
+        Compression::None => put_counted(source, cas, position),
+        Compression::Gzip => {
+            // `flate2::read::GzEncoder<R>` produces compressed bytes
+            // when read from — chains naturally with put_stream
+            // without an intermediate buffer.
+            let encoder = GzEncoder::new(source, GzipLevel::default());
+            put_counted(encoder, cas, position)
+        }
+        Compression::Zstd => {
+            // `zstd::stream::read::Encoder<R>` is the analogous
+            // read-side encoder for zstd. Level 3 matches the `zstd`
+            // CLI default — pin via the wrapper so a future codec
+            // upgrade routes through one place.
+            let encoder = zstd::stream::read::Encoder::new(source, 3)
+                .map_err(|source| BuildError::LayerCompression { position, source })?;
+            put_counted(encoder, cas, position)
+        }
+    }
 }
 
-/// Gzip-encode at `flate2::Compression::default()` (level 6, matches
-/// command-line `gzip`). Pinned via this wrapper so a future change
-/// to the encoder level routes through here, where the
-/// reproducibility implications are visible.
-fn gzip_encode(bytes: &[u8]) -> io::Result<Vec<u8>> {
-    use std::io::Write;
-    let mut enc = GzEncoder::new(Vec::new(), GzipLevel::default());
-    enc.write_all(bytes)?;
-    enc.finish()
+/// Helper: wrap `reader` in a `CountingReader`, hand to
+/// `cas.put_stream`, return digest + byte count. Failures from the
+/// CAS land in `BuildError::LayerWrite`; failures from the underlying
+/// reader (which would surface inside put_stream as `CasError::Io`)
+/// also land there — there's no useful distinction at the layer
+/// level.
+fn put_counted<R: Read>(
+    reader: R,
+    cas: &dyn Cas,
+    position: usize,
+) -> Result<(Digest, u64), BuildError> {
+    let mut counter = CountingReader::new(reader);
+    let digest = cas
+        .put_stream(&mut counter)
+        .map_err(|source| BuildError::LayerWrite { position, source })?;
+    Ok((digest, counter.bytes))
 }
 
-/// Zstd-encode at level 3 (zstd's documented default — same bytes
-/// the `zstd` CLI emits with no flags).
-fn zstd_encode(bytes: &[u8]) -> io::Result<Vec<u8>> {
-    zstd::stream::encode_all(Cursor::new(bytes), 3)
+/// Wraps a `Read` and tallies the bytes that pass through. The OCI
+/// descriptor's `size` is the count of bytes the registry will
+/// store — the **compressed** size when compression is on — and
+/// the only point in the pipeline where we naturally see that
+/// number is "after compression but before CAS hashing." A
+/// `CountingReader` between those two steps is the cleanest place
+/// to capture it.
+///
+/// Why not stat the on-disk blob after `put_stream` returns? Because
+/// the `Cas` trait is backend-generic; not every backend exposes
+/// a path to stat (and `MemCas` doesn't). Counting in-band keeps
+/// the property at the trait level.
+struct CountingReader<R: Read> {
+    inner: R,
+    bytes: u64,
+}
+
+impl<R: Read> CountingReader<R> {
+    fn new(inner: R) -> Self {
+        CountingReader { inner, bytes: 0 }
+    }
+}
+
+impl<R: Read> Read for CountingReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        self.bytes += n as u64;
+        Ok(n)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
 
     use cas::FsCas;
     use spec::{Compression, Layer, LayerFile, LayerSource, MediaType};
     use tempfile::TempDir;
 
-    // `MediaType` constructor is `pub(crate)` to spec; in tests we
-    // use a known-valid string and parse-and-validate to obtain it.
-    // For these unit tests we round-trip through TOML to obtain a
-    // valid `MediaType` rather than reach across the privacy boundary.
     fn vmkernel_media_type(tmp: &Path) -> MediaType {
-        // Stage a minimal vm_image-shaped spec to harvest a MediaType.
-        // (We can't construct one directly because the constructor
-        // is `pub(crate)` to spec.)
+        // Stage a minimal vm_image-shaped spec to harvest a MediaType
+        // (the `MediaType` constructor is `pub(crate)` to spec).
         let kernel = tmp.join("k.bin");
         let initrd = tmp.join("i.bin");
         let rootfs = tmp.join("r.bin");
@@ -183,7 +240,7 @@ compression = "gzip"
         );
         let parsed =
             spec::parse_and_validate_str(&toml_text, tmp.to_path_buf()).expect("valid");
-        parsed.layers[0].media_type.clone()
+        parsed.spec.layers[0].media_type.clone()
     }
 
     #[test]
@@ -243,10 +300,7 @@ compression = "gzip"
         };
 
         let result = assemble_layer(&layer, 1, tmp.path(), &cas).unwrap();
-        // The CAS now has the tar bytes; pulling them back must
-        // round-trip through `cas::Cas::get`.
         let bytes = cas.get(&result.digest).unwrap();
-        // Confirm it parses as a tar with one entry.
         let mut ar = tar::Archive::new(&bytes[..]);
         let mut count = 0;
         for entry in ar.entries().unwrap() {
@@ -320,5 +374,125 @@ compression = "gzip"
             }
             other => panic!("expected BuildError::Io, got {other:?}"),
         }
+    }
+
+    /// A `Read` impl that records every read call's requested-buffer
+    /// size. Used to prove the assembly pipeline streams its source
+    /// in chunks rather than buffering the whole payload upfront.
+    struct ProbeReader<R: Read> {
+        inner: R,
+        read_calls: Arc<AtomicUsize>,
+        max_buf_seen: Arc<AtomicUsize>,
+    }
+
+    impl<R: Read> Read for ProbeReader<R> {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            self.read_calls.fetch_add(1, Ordering::SeqCst);
+            self.max_buf_seen
+                .fetch_max(buf.len(), Ordering::SeqCst);
+            self.inner.read(buf)
+        }
+    }
+
+    /// Streaming property: a 1 MiB Blob source flows through the
+    /// pipeline in multiple read() calls — no `read_to_end` style
+    /// buffer-everything-first regression. Multi-GB rootfs.ext4
+    /// layers depend on this property.
+    ///
+    /// Bug this would catch: a refactor that calls `read_to_end`
+    /// on the source before handing bytes to compression / CAS,
+    /// which would OOM on layer files larger than RAM.
+    #[test]
+    fn test_blob_layer_streams_in_chunks() {
+        let tmp = TempDir::new().unwrap();
+        let cas_root = tmp.path().join("cas");
+        std::fs::create_dir_all(&cas_root).unwrap();
+        let cas = FsCas::new(&cas_root).unwrap();
+
+        // Build a 1 MiB payload. Patterned bytes so the digest is
+        // deterministic and the test can assert it.
+        let payload: Vec<u8> = (0..1024u32 * 1024)
+            .map(|i| (i & 0xff) as u8)
+            .collect();
+        let payload_path = tmp.path().join("big.bin");
+        std::fs::write(&payload_path, &payload).unwrap();
+
+        // Wire a ProbeReader inline by reading the file ourselves
+        // instead of letting `assemble_layer` open it. We bypass the
+        // public function for one direct call to the streaming
+        // helper — the file path the rest of the pipeline takes is
+        // the one this test inspects.
+        let read_calls = Arc::new(AtomicUsize::new(0));
+        let max_buf_seen = Arc::new(AtomicUsize::new(0));
+        let probe = ProbeReader {
+            inner: File::open(&payload_path).unwrap(),
+            read_calls: Arc::clone(&read_calls),
+            max_buf_seen: Arc::clone(&max_buf_seen),
+        };
+
+        let (digest, size) =
+            stream_through_compression(Compression::None, probe, 0, &cas).unwrap();
+
+        // Exactly the source bytes' digest — no compression, no
+        // mangling.
+        let expected = Digest::from_bytes(cas::Algorithm::Sha256, &payload);
+        assert_eq!(digest, expected);
+        assert_eq!(size, payload.len() as u64);
+
+        // The streaming property: many reads, none of which asked
+        // for the whole 1 MiB at once.
+        let calls = read_calls.load(Ordering::SeqCst);
+        let max_buf = max_buf_seen.load(Ordering::SeqCst);
+        assert!(
+            calls > 1,
+            "streaming pipeline must use multiple read() calls (saw {calls})"
+        );
+        assert!(
+            max_buf < payload.len(),
+            "no single read() may ask for the entire payload (max_buf={max_buf}, payload={})",
+            payload.len()
+        );
+    }
+
+    /// Same property as above, but with gzip compression on top —
+    /// proves that the read-side encoder doesn't materialise the
+    /// raw input before compressing.
+    #[test]
+    fn test_blob_layer_streams_through_gzip_in_chunks() {
+        let tmp = TempDir::new().unwrap();
+        let cas_root = tmp.path().join("cas");
+        std::fs::create_dir_all(&cas_root).unwrap();
+        let cas = FsCas::new(&cas_root).unwrap();
+
+        let payload: Vec<u8> = (0..512u32 * 1024).map(|i| (i & 0xff) as u8).collect();
+        let payload_path = tmp.path().join("big.bin");
+        std::fs::write(&payload_path, &payload).unwrap();
+
+        let read_calls = Arc::new(AtomicUsize::new(0));
+        let max_buf_seen = Arc::new(AtomicUsize::new(0));
+        let probe = ProbeReader {
+            inner: File::open(&payload_path).unwrap(),
+            read_calls: Arc::clone(&read_calls),
+            max_buf_seen: Arc::clone(&max_buf_seen),
+        };
+
+        let (_digest, compressed_size) =
+            stream_through_compression(Compression::Gzip, probe, 0, &cas).unwrap();
+        assert!(compressed_size > 0);
+        assert!(
+            compressed_size < payload.len() as u64,
+            "patterned payload should compress smaller than raw"
+        );
+
+        let calls = read_calls.load(Ordering::SeqCst);
+        let max_buf = max_buf_seen.load(Ordering::SeqCst);
+        assert!(
+            calls > 1,
+            "gzip streaming must use multiple read() calls (saw {calls})"
+        );
+        assert!(
+            max_buf < payload.len(),
+            "gzip read-side encoder must chunk the input (max_buf={max_buf})"
+        );
     }
 }

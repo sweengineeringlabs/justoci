@@ -277,7 +277,7 @@ source     = "c.bin"
 media_type = "application/octet-stream"
 "#;
     let (text, dir) = staged(s, &["a.bin", "b.bin", "c.bin"]);
-    let spec = parse_and_validate_str(&text, dir).expect("parses");
+    let spec = parse_and_validate_str(&text, dir).expect("parses").spec;
     assert!(matches!(spec.layers[0].compression, Compression::Gzip));
     assert!(matches!(spec.layers[1].compression, Compression::Zstd));
     assert!(matches!(spec.layers[2].compression, Compression::None));
@@ -381,7 +381,7 @@ fn test_default_attestation_when_block_omitted() {
     // The product opinion: omit [attestation] entirely, get the
     // on-by-default posture (SLSA L2 + CycloneDX + cosign-keyless).
     let (text, dir) = staged(VALID_SPEC, &["blob.bin"]);
-    let spec = parse_and_validate_str(&text, dir).expect("parses");
+    let spec = parse_and_validate_str(&text, dir).expect("parses").spec;
     assert!(matches!(
         spec.attestation.slsa.level,
         spec::SlsaLevel::L2

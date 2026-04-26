@@ -20,8 +20,8 @@ pub fn make_built_artifact() -> (BuiltArtifact, TempDir) {
     let tmp = TempDir::new().expect("tempdir");
     let spec_dir = tmp.path().to_path_buf();
     write_layer_files(&spec_dir);
-    let spec = parse_and_validate_str(sample_spec_toml(), spec_dir).expect("spec parses");
-    let built = built_from(&spec);
+    let loaded = parse_and_validate_str(sample_spec_toml(), spec_dir).expect("spec parses");
+    let built = built_from(&loaded.spec);
     (built, tmp)
 }
 

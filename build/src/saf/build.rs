@@ -36,7 +36,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use cas::FsCas;
-use spec::Spec;
+use spec::LoadedSpec;
 
 use crate::api::build_error::BuildError;
 use crate::api::build_output::BuildOutput;
@@ -48,7 +48,13 @@ use crate::core::oci_assembly::{
     assemble_config_and_manifest, check_layer_count_post_assembly,
 };
 
-/// Build an OCI Image Layout v1.1 from a validated `Spec`.
+/// Build an OCI Image Layout v1.1 from a `LoadedSpec`.
+///
+/// `LoadedSpec` carries the spec together with the directory its
+/// relative layer source paths anchor against — this is the explicit
+/// contract that replaces the earlier heuristic. Callers that
+/// construct an in-memory `Spec` with absolute layer paths still
+/// work: `LoadedSpec::resolve` is a no-op for absolute paths.
 ///
 /// `output_dir` MUST NOT already exist as the final destination —
 /// the function refuses to overwrite a complete directory. If the
@@ -62,7 +68,10 @@ use crate::core::oci_assembly::{
 /// On failure returns a typed `BuildError` and leaves
 /// `<output_dir>.partial` on disk for diagnosis. The final
 /// `<output_dir>` is never created on a failed build.
-pub fn build(spec: &Spec, output_dir: &Path) -> Result<BuildOutput, BuildError> {
+pub fn build(
+    loaded: &LoadedSpec,
+    output_dir: &Path,
+) -> Result<BuildOutput, BuildError> {
     if output_dir.exists() {
         return Err(BuildError::Io {
             path: output_dir.to_path_buf(),
@@ -73,15 +82,8 @@ pub fn build(spec: &Spec, output_dir: &Path) -> Result<BuildOutput, BuildError> 
         });
     }
 
-    // The spec was validated against a directory of source files.
-    // We need that same directory to resolve relative `LayerSource`
-    // paths — `parse_and_validate` checked the paths exist relative
-    // to that dir. Surface it here via an explicit field rather than
-    // a side-channel: the only caller that obtains a `Spec` is the
-    // `parse_and_validate` family, which knew the spec dir; if a
-    // future caller wants to build from an in-memory Spec they pass
-    // an absolute-paths Spec.
-    let spec_dir = derive_spec_dir(spec);
+    let spec = &loaded.spec;
+    let spec_dir = &loaded.spec_dir;
 
     let partial = partial_path(output_dir);
     // Drop any stale partial from an earlier failed run; per the
@@ -105,7 +107,7 @@ pub fn build(spec: &Spec, output_dir: &Path) -> Result<BuildOutput, BuildError> 
     let mut layer_descriptors: Vec<OciDescriptor> = Vec::with_capacity(spec.layers.len());
     let mut layer_digests = Vec::with_capacity(spec.layers.len());
     for (position, layer) in spec.layers.iter().enumerate() {
-        let result = assemble_layer(layer, position, &spec_dir, &cas)?;
+        let result = assemble_layer(layer, position, spec_dir, &cas)?;
         layer_descriptors.push(result.descriptor);
         layer_digests.push(result.digest);
     }
@@ -158,47 +160,4 @@ fn partial_path(output_dir: &Path) -> PathBuf {
     let mut s = output_dir.as_os_str().to_owned();
     s.push(".partial");
     PathBuf::from(s)
-}
-
-/// The `Spec` doesn't carry its source directory directly; we
-/// reconstruct it from the first absolute layer source. Specs
-/// produced by `parse_and_validate` resolve all relative paths
-/// against the spec file's parent dir at validation time but keep
-/// the original (possibly relative) paths in the `Spec`. To support
-/// in-memory specs whose layer paths are already absolute, we walk
-/// the layers and accept any absolute path as the anchor's parent —
-/// otherwise fall back to the current working directory.
-///
-/// Callers that need explicit control can construct an absolute-
-/// paths `Spec` (the spec crate's `parse_and_validate_str` accepts
-/// an explicit `spec_dir` for this purpose) — in that case relative
-/// paths are still relative to the cwd, which is what the spec
-/// validator anchors them to too.
-fn derive_spec_dir(spec: &Spec) -> PathBuf {
-    use spec::LayerSource;
-    for layer in &spec.layers {
-        match &layer.source {
-            LayerSource::Blob { path } if path.is_absolute() => {
-                if let Some(parent) = path.parent() {
-                    return parent.to_path_buf();
-                }
-            }
-            LayerSource::Files { entries } => {
-                for entry in entries {
-                    if entry.source.is_absolute() {
-                        if let Some(parent) = entry.source.parent() {
-                            return parent.to_path_buf();
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    // Fall back: relative paths anchor to cwd. Tests that use
-    // `parse_and_validate_str` with an explicit `spec_dir` populate
-    // absolute-path Specs (the validator joins the spec_dir to each
-    // relative path), so this branch only fires for the rare
-    // hand-crafted in-memory Spec.
-    PathBuf::from(".")
 }

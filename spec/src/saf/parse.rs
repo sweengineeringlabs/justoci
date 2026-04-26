@@ -1,8 +1,16 @@
 //! Public spec-loading entry points.
+//!
+//! Both functions return `LoadedSpec` (Spec + the directory layer
+//! source paths anchor against) rather than a bare `Spec`. The
+//! anchor is part of the spec's runtime identity — a `Spec` parsed
+//! from `/a/spec.toml` and a `Spec` parsed from `/b/spec.toml`
+//! describe artifacts whose contents differ, even if the TOML text
+//! is byte-identical, because their relative layer sources resolve
+//! to different files.
 
 use std::path::{Path, PathBuf};
 
-use crate::api::{Spec, SpecError};
+use crate::api::{LoadedSpec, SpecError};
 use crate::core::{raw::RawSpec, validate};
 
 /// Read a spec file from disk, parse, and validate.
@@ -13,7 +21,7 @@ use crate::core::{raw::RawSpec, validate};
 ///
 /// On `Err`, no partial state escapes — the caller cannot accidentally
 /// build from a half-validated spec.
-pub fn parse_and_validate(path: impl AsRef<Path>) -> Result<Spec, SpecError> {
+pub fn parse_and_validate(path: impl AsRef<Path>) -> Result<LoadedSpec, SpecError> {
     let path = path.as_ref();
 
     let bytes = std::fs::read_to_string(path).map_err(|e| SpecError::Io {
@@ -32,9 +40,10 @@ pub fn parse_and_validate(path: impl AsRef<Path>) -> Result<Spec, SpecError> {
 pub fn parse_and_validate_str(
     toml_text: &str,
     spec_dir: PathBuf,
-) -> Result<Spec, SpecError> {
+) -> Result<LoadedSpec, SpecError> {
     let raw: RawSpec = toml::from_str(toml_text)?;
-    validate::validate(raw, &spec_dir)
+    let spec = validate::validate(raw, &spec_dir)?;
+    Ok(LoadedSpec::new(spec, spec_dir))
 }
 
 fn spec_dir_for(path: &Path) -> PathBuf {

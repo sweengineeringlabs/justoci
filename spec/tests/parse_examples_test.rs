@@ -42,7 +42,7 @@ fn test_vm_image_example_parses() {
             "downloads/rootfs-alpine.ext4",
         ],
     );
-    let spec = parse_and_validate(dir.path().join("vm-image.toml")).expect("parses");
+    let spec = parse_and_validate(dir.path().join("vm-image.toml")).expect("parses").spec;
 
     assert_eq!(spec.kind, Kind::VmImage);
     assert_eq!(spec.id.name, "llmboot");
@@ -76,7 +76,7 @@ fn test_oci_artifact_example_parses() {
         &["weights/llama-7b.q4_0.gguf"],
     );
     let spec =
-        parse_and_validate(dir.path().join("oci-artifact.toml")).expect("parses");
+        parse_and_validate(dir.path().join("oci-artifact.toml")).expect("parses").spec;
 
     assert_eq!(spec.kind, Kind::OciArtifact);
     assert_eq!(spec.id.name, "ggml-llama-7b");
@@ -92,7 +92,7 @@ fn test_oci_artifact_example_parses() {
 fn test_firmware_example_parses() {
     let toml = include_str!("../../examples/firmware.toml");
     let dir = stage_spec("firmware.toml", toml, &["build/firmware.bin"]);
-    let spec = parse_and_validate(dir.path().join("firmware.toml")).expect("parses");
+    let spec = parse_and_validate(dir.path().join("firmware.toml")).expect("parses").spec;
 
     assert_eq!(spec.kind, Kind::RawImage);
     assert_eq!(spec.id.name, "device-firmware");

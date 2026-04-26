@@ -162,7 +162,7 @@ pub fn posix(p: &Path) -> String {
 /// crate uses the spec_dir argument only for relative-path resolution
 /// at validation time. Tests pass an arbitrary spec_dir (the temp
 /// dir) since all our staged TOMLs use absolute layer paths.
-pub fn parse_spec(toml_text: &str, spec_dir: &Path) -> spec::Spec {
+pub fn parse_spec(toml_text: &str, spec_dir: &Path) -> spec::LoadedSpec {
     spec::parse_and_validate_str(toml_text, spec_dir.to_path_buf())
         .expect("test spec must parse + validate")
 }

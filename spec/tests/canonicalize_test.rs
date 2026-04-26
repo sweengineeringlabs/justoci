@@ -39,8 +39,8 @@ media_type = "application/octet-stream"
 #[test]
 fn test_spec_hash_is_deterministic_across_parses() {
     let (text, dir) = staged(SPEC_A, &["blob.bin"]);
-    let spec1 = parse_and_validate_str(&text, dir.clone()).unwrap();
-    let spec2 = parse_and_validate_str(&text, dir).unwrap();
+    let spec1 = parse_and_validate_str(&text, dir.clone()).unwrap().spec;
+    let spec2 = parse_and_validate_str(&text, dir).unwrap().spec;
     let h1 = spec_hash(&spec1).unwrap();
     let h2 = spec_hash(&spec2).unwrap();
     assert_eq!(h1, h2, "same spec must hash identically across parses");
@@ -66,8 +66,8 @@ media_type="application/octet-stream"
     let (text_a, dir_a) = staged(original, &["blob.bin"]);
     let (text_b, dir_b) = staged(reformatted, &["blob.bin"]);
 
-    let spec_a = parse_and_validate_str(&text_a, dir_a).unwrap();
-    let spec_b = parse_and_validate_str(&text_b, dir_b).unwrap();
+    let spec_a = parse_and_validate_str(&text_a, dir_a).unwrap().spec;
+    let spec_b = parse_and_validate_str(&text_b, dir_b).unwrap().spec;
 
     assert_eq!(spec_hash(&spec_a).unwrap(), spec_hash(&spec_b).unwrap());
 }
@@ -96,8 +96,8 @@ source     = "blob.bin"
     let (text_a, dir_a) = staged(order_a, &["blob.bin"]);
     let (text_b, dir_b) = staged(order_b, &["blob.bin"]);
 
-    let spec_a = parse_and_validate_str(&text_a, dir_a).unwrap();
-    let spec_b = parse_and_validate_str(&text_b, dir_b).unwrap();
+    let spec_a = parse_and_validate_str(&text_a, dir_a).unwrap().spec;
+    let spec_b = parse_and_validate_str(&text_b, dir_b).unwrap().spec;
 
     assert_eq!(spec_hash(&spec_a).unwrap(), spec_hash(&spec_b).unwrap());
 }
@@ -114,8 +114,8 @@ fn test_spec_hash_differs_when_id_changes() {
     let (text_a, dir_a) = staged(a, &["blob.bin"]);
     let (text_b, dir_b) = staged(&b, &["blob.bin"]);
 
-    let spec_a = parse_and_validate_str(&text_a, dir_a).unwrap();
-    let spec_b = parse_and_validate_str(&text_b, dir_b).unwrap();
+    let spec_a = parse_and_validate_str(&text_a, dir_a).unwrap().spec;
+    let spec_b = parse_and_validate_str(&text_b, dir_b).unwrap().spec;
 
     assert_ne!(spec_hash(&spec_a).unwrap(), spec_hash(&spec_b).unwrap());
 }
@@ -129,7 +129,7 @@ fn test_spec_hash_differs_when_id_changes() {
 #[test]
 fn test_spec_hash_format_is_oci_digest() {
     let (text, dir) = staged(SPEC_A, &["blob.bin"]);
-    let spec = parse_and_validate_str(&text, dir).unwrap();
+    let spec = parse_and_validate_str(&text, dir).unwrap().spec;
     let hash = spec_hash(&spec).unwrap();
     let s = hash.to_string();
     assert!(s.starts_with("sha256:"), "expected sha256:... form, got {s}");
@@ -144,7 +144,7 @@ fn test_spec_hash_format_is_oci_digest() {
 #[test]
 fn test_canonical_bytes_are_valid_json() {
     let (text, dir) = staged(SPEC_A, &["blob.bin"]);
-    let spec = parse_and_validate_str(&text, dir).unwrap();
+    let spec = parse_and_validate_str(&text, dir).unwrap().spec;
     let bytes = canonical_bytes(&spec).unwrap();
     let _v: serde_json::Value =
         serde_json::from_slice(&bytes).expect("JCS output must be valid JSON");
