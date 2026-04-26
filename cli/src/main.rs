@@ -13,7 +13,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 use tracing_subscriber::EnvFilter;
 
-use swe_justoci_oci_cli::cmd::publish::AuthMode;
+use swe_justoci_oci_cli::cmd::publish::{AuthMode, PublishAuthMode};
 use swe_justoci_oci_cli::cmd::sbom::SbomFormat;
 use swe_justoci_oci_cli::cmd::verify::{VerifyAuthMode, VerifyOptions};
 use swe_justoci_oci_cli::cmd::{build, inspect, publish, sbom, verify};
@@ -70,6 +70,14 @@ enum Commands {
         /// `bearer` requires --registry-token.
         #[arg(long, default_value = "env")]
         auth: String,
+
+        /// Explicit anonymous push. Skips env-var credential
+        /// resolution entirely — the shorthand for "I know this
+        /// registry is public-writable" (e.g. a local `registry:2`
+        /// smoke test). Mutually exclusive with `--auth` /
+        /// `--registry-*` flags. Ignored on HTTP sinks.
+        #[arg(long)]
+        no_auth: bool,
 
         /// Username for `--auth basic`.
         #[arg(long, env = "REGISTRY_USERNAME")]
@@ -232,13 +240,19 @@ fn dispatch(command: Commands) -> Result<(), CliError> {
             dir,
             to,
             auth,
+            no_auth,
             registry_username,
             registry_password,
             registry_token,
         } => {
-            let auth_mode =
-                parse_auth_mode(&auth, registry_username, registry_password, registry_token)?;
-            let outcome = publish::run(&dir, &to, auth_mode)?;
+            let publish_auth = parse_publish_auth_mode(
+                no_auth,
+                &auth,
+                registry_username,
+                registry_password,
+                registry_token,
+            )?;
+            let outcome = publish::run(&dir, &to, publish_auth)?;
             for d in &outcome.digests_pushed {
                 println!("pushed:  {d}");
             }
@@ -362,6 +376,34 @@ fn pillar_detail(v: &PillarVerdict) -> &str {
         PillarVerdict::Found { detail } => detail,
         PillarVerdict::Failed { detail } => detail,
     }
+}
+
+/// Parse the publish-side auth surface. `--no-auth` is the
+/// explicit-anonymous override (yielding `auth: None` on the
+/// registry sink); otherwise the same `--auth env|basic|bearer`
+/// matrix maps to a `PublishAuthMode::Authenticated`. Mutual
+/// exclusion: an operator who passes both `--no-auth` and any
+/// `--auth ...` / `--registry-*` flag gets a typed error rather
+/// than a silently-ignored credential — same shape as verify.
+fn parse_publish_auth_mode(
+    no_auth: bool,
+    raw: &str,
+    username: Option<String>,
+    password: Option<String>,
+    token: Option<String>,
+) -> Result<PublishAuthMode, CliError> {
+    if no_auth {
+        let auth_was_set =
+            raw != "env" || username.is_some() || password.is_some() || token.is_some();
+        if auth_was_set {
+            return Err(CliError::Cli {
+                detail: "--no-auth is mutually exclusive with --auth / --registry-* flags".into(),
+            });
+        }
+        return Ok(PublishAuthMode::Anonymous);
+    }
+    let mode = parse_auth_mode(raw, username, password, token)?;
+    Ok(PublishAuthMode::Authenticated(mode))
 }
 
 /// Parse the verify-side auth surface. `--no-auth` is the

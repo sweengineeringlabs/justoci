@@ -1,4 +1,4 @@
-//! `ocimage publish <dir> --to <sink> [--auth ...]`.
+//! `ocimage publish <dir> --to <sink> [--auth ...] [--no-auth]`.
 //!
 //! `<sink>` is a URI-shaped string:
 //!
@@ -10,6 +10,9 @@
 //! - `--auth env`           → [`RegistryAuth::FromEnv`] (default)
 //! - `--auth basic`         → requires `--registry-username` + `--registry-password`
 //! - `--auth bearer`        → requires `--registry-token`
+//! - `--no-auth`            → `auth: None` on the sink (explicit anonymous,
+//!   skips env lookup; the shorthand for "I know this registry is
+//!   public-writable", e.g. a local `registry:2` smoke test).
 //!
 //! Errors map to `PublishError` → exit 4. URI-parse errors land as
 //! `CliError::Cli` → exit 64 because they're an operator-flag typo
@@ -42,6 +45,28 @@ impl AuthMode {
             AuthMode::Bearer { token } => RegistryAuth::Bearer { token },
         }
     }
+}
+
+/// Auth selector for `ocimage publish`. Mirrors verify's
+/// `VerifyAuthMode`: either an explicit anonymous push (no
+/// `Authorization:` header sent, no env lookup attempted) or one of
+/// the [`AuthMode`] variants resolved from `--auth`.
+///
+/// We don't widen [`AuthMode`] itself with an `Anonymous` variant
+/// because publish's [`AuthMode`] is also surfaced through verify
+/// (`VerifyAuthMode::Authenticated(AuthMode)`), and conflating
+/// "unset env" with "explicit anon" there would erase the difference
+/// between "I forgot to export REGISTRY_TOKEN" and "this registry
+/// is public" — operators rely on the typed-error noise of the
+/// former.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PublishAuthMode {
+    /// Explicit anonymous — `auth: None` on the registry sink.
+    /// Used for unauthenticated `registry:2` smoke tests and
+    /// public-writable mirrors.
+    Anonymous,
+    /// Pre-resolved auth from `--auth env|basic|bearer`.
+    Authenticated(AuthMode),
 }
 
 /// Parse a sink URI. Returns either an HTTP sink or the registry
@@ -107,7 +132,17 @@ pub fn parse_sink_uri(raw: &str) -> Result<ParsedSink, CliError> {
 }
 
 /// Run the publish subcommand.
-pub fn run(image_dir: &Path, sink_uri: &str, auth: AuthMode) -> Result<PublishOutcome, CliError> {
+///
+/// `auth` selects either an explicit-anonymous push (`--no-auth`,
+/// yielding `auth: None` on the registry sink — no `Authorization`
+/// header on the wire, no env lookup attempted) or the pre-resolved
+/// `AuthMode` from `--auth env|basic|bearer`. HTTP sinks ignore
+/// `auth` entirely (no auth surface there).
+pub fn run(
+    image_dir: &Path,
+    sink_uri: &str,
+    auth: PublishAuthMode,
+) -> Result<PublishOutcome, CliError> {
     let parsed = parse_sink_uri(sink_uri)?;
     let image = ImageDir::open(image_dir).map_err(oci_publish::PublishError::from)?;
     let sink = match parsed {
@@ -116,12 +151,18 @@ pub fn run(image_dir: &Path, sink_uri: &str, auth: AuthMode) -> Result<PublishOu
             registry,
             repository,
             tag,
-        } => PublishSink::Registry {
-            registry,
-            repository,
-            tag,
-            auth: Some(auth.into_registry_auth()),
-        },
+        } => {
+            let registry_auth = match auth {
+                PublishAuthMode::Anonymous => None,
+                PublishAuthMode::Authenticated(mode) => Some(mode.into_registry_auth()),
+            };
+            PublishSink::Registry {
+                registry,
+                repository,
+                tag,
+                auth: registry_auth,
+            }
+        }
     };
     let outcome = publish(&image, &sink)?;
     Ok(outcome)
@@ -207,6 +248,75 @@ mod tests {
                 assert_eq!(password, "p");
             }
             other => panic!("wrong variant: {other:?}"),
+        }
+    }
+
+    /// Constructs the same `PublishSink` `run()` would build, given a
+    /// parsed `--to` registry URI and a `PublishAuthMode`. Used by
+    /// the auth-projection tests below to assert the wire-side
+    /// `auth: Option<RegistryAuth>` field matches the operator's
+    /// flag intent without spinning up a real ImageDir.
+    fn build_sink_for_test(uri: &str, auth: PublishAuthMode) -> PublishSink {
+        match parse_sink_uri(uri).unwrap() {
+            ParsedSink::Http { dest_dir } => PublishSink::Http { dest_dir },
+            ParsedSink::Registry {
+                registry,
+                repository,
+                tag,
+            } => {
+                let registry_auth = match auth {
+                    PublishAuthMode::Anonymous => None,
+                    PublishAuthMode::Authenticated(mode) => Some(mode.into_registry_auth()),
+                };
+                PublishSink::Registry {
+                    registry,
+                    repository,
+                    tag,
+                    auth: registry_auth,
+                }
+            }
+        }
+    }
+
+    // Catches: a future refactor that quietly maps
+    // `PublishAuthMode::Anonymous` onto `RegistryAuth::FromEnv`
+    // (e.g. by reusing `AuthMode::Env`) — the registry sink would
+    // then attempt env lookup and surface a confusing
+    // `PublishError::Auth` to the operator who explicitly asked
+    // for `--no-auth`. The contract is `auth: None` on the wire.
+    #[test]
+    fn test_publish_auth_mode_anonymous_yields_sink_auth_none() {
+        let sink = build_sink_for_test(
+            "registry:localhost:5000/acme/img:0.1.0",
+            PublishAuthMode::Anonymous,
+        );
+        match sink {
+            PublishSink::Registry { auth, .. } => assert!(
+                auth.is_none(),
+                "PublishAuthMode::Anonymous must yield auth: None on the sink"
+            ),
+            other => panic!("wrong variant: {other:?}"),
+        }
+    }
+
+    // Catches: a future refactor that flattens
+    // `PublishAuthMode::Authenticated(AuthMode::Env)` to
+    // `PublishAuthMode::Anonymous` "because the env path can fail
+    // anyway" — operators rely on the typed PublishError::Auth
+    // diagnostic when they forget to export REGISTRY_TOKEN, and
+    // silent anonymous publish would mask that bug.
+    #[test]
+    fn test_publish_auth_mode_authenticated_env_yields_some_from_env() {
+        let sink = build_sink_for_test(
+            "registry:localhost:5000/acme/img:0.1.0",
+            PublishAuthMode::Authenticated(AuthMode::Env),
+        );
+        match sink {
+            PublishSink::Registry {
+                auth: Some(RegistryAuth::FromEnv),
+                ..
+            } => {}
+            other => panic!("expected Some(FromEnv); got {other:?}"),
         }
     }
 }

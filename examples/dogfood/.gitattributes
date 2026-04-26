@@ -1,0 +1,12 @@
+# payload.bin is a deterministic 1024-byte binary fixture (bytes
+# 0..255 repeating four times). Git's autodetect heuristic + global
+# autocrlf=true on Windows checkouts would otherwise risk CRLF
+# rewrites on the embedded 0x0A bytes, which would change the hash
+# and break verify.
+payload.bin binary
+
+# run.sh must keep LF line endings even on Windows checkouts —
+# Git Bash + WSL refuse to source CRLF scripts cleanly, and the
+# `bash run.sh` invocation in setup.md would surface a confusing
+# "$'\r': command not found" instead of running.
+run.sh text eol=lf

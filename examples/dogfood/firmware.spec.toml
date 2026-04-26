@@ -1,0 +1,26 @@
+# Dogfood fixture — proves the full ocimage pipeline end-to-end
+# against `registry:2` (issue #6, no-attest path).
+#
+# This is the smallest viable raw_image: one uncompressed layer with a
+# 1 KiB payload. It is intentionally minimal — the goal is to exercise
+# the wire shape of build → publish → verify against a real OCI
+# Distribution v2 registry, not to ship a realistic firmware.
+#
+# Run:
+#
+#     bash run.sh
+#
+# from this directory (or anywhere — the script `cd`s itself).
+
+spec_version = "0"
+id           = "dogfood-firmware:0.1.0"
+kind         = "raw_image"
+description  = "Dogfood fixture — proves the full ocimage pipeline end-to-end against registry:2"
+
+[[layers]]
+source     = "payload.bin"
+media_type = "application/vnd.dogfood.firmware+binary"
+
+[annotations]
+"org.opencontainers.image.title"   = "dogfood-firmware"
+"org.opencontainers.image.version" = "0.1.0"

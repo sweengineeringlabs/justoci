@@ -147,3 +147,27 @@ unresolved — open the workspace root (`justoci/`) instead.
 | New CLI subcommand | `cli/src/cmd/` + `cli/src/main.rs` |
 | Auth / pull / publish wire | `publish/src/core/registry_sink.rs`, `cli/src/registry/pull.rs` |
 | Cross-cutting error type | each crate's `src/api/error.rs` |
+
+## Smoke-test the full pipeline
+
+The unit + integration tests use `httpmock` to fake the registry's
+HTTP layer — fast, reproducible, but mock-shaped. To confirm your
+local toolchain genuinely talks to a real OCI Distribution v2
+registry, run the dogfood script:
+
+```bash
+bash examples/dogfood/run.sh
+```
+
+It spins up Docker's `registry:2` on a free local port, runs
+`ocimage build → publish → verify` end-to-end (no-attest path),
+and tears the container down on exit. Exit code 0 + a final
+"✓ dogfood passed" line means your build, the workspace, and the
+wire shape all agree.
+
+Prereqs: Docker, `cargo`, `python` (free-port probe), `curl`
+(liveness check). See `examples/dogfood/README.md` for what to do
+when it fails.
+
+The script does **not** exercise attestation; the cosign + Sigstore
+end-to-end live test is tracked separately as issue #14.

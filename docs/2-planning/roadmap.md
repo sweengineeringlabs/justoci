@@ -19,6 +19,7 @@ workspace.
 | CI | GitHub Actions for both repos | ✓ | `b47085e` / `44f4ad9` |
 | Docs | SDLC-phase documentation tree | ✓ | (this commit) |
 | Refactor | Move `oci-systemd` to vmisolate (xkvm-specific) | ✓ | (issue #5) |
+| Dogfood | Full pipeline against `registry:2`, no-attest path (`examples/dogfood/`) | ✓ | (issue #6) |
 
 ## v0.2 — in flight / next
 
