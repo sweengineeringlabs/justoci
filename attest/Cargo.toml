@@ -3,7 +3,7 @@ name = "swe_justoci_attest"
 version = "0.1.0"
 edition = "2021"
 description = "Attestation pipeline for justoci — SLSA provenance + CycloneDX/SPDX SBOM + cosign signing emitted as OCI 1.1 referrers."
-license = "MIT"
+license = "Apache-2.0"
 repository = "https://github.com/sweengineeringlabs/justoci"
 rust-version.workspace = true
 
