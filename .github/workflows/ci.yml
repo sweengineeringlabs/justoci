@@ -163,6 +163,60 @@ jobs:
         run: cargo test -p swe_justoci_oci_cli --test registry_smoke_test -- --ignored --test-threads=1
         working-directory: justoci
 
+  jcs-cross-lang:
+    # Cross-language JCS canonicalisation verification.
+    #
+    # The fixture set under `tests/fixtures/jcs/` ships the JCS
+    # canonical bytes + spec hash for a representative set of specs
+    # (anchor, unicode, numeric edge cases, deeply nested key
+    # ordering, full vm_image). This job:
+    #
+    #   1. Re-runs the regenerate-jcs-fixtures binary with --check
+    #      to catch any contributor who edited a fixture's spec.toml
+    #      but forgot to refresh the committed expected.* files.
+    #   2. Builds and runs the Go-side verifier, which re-implements
+    #      the spec_to_json projection in Go and feeds the result to
+    #      gowebpki/jcs. A mismatch means the Rust impl and a Go
+    #      re-implementation disagree on the canonical form — the
+    #      exact bug class Production Guarantee §3 forbids.
+    #
+    # Python verification is wired but not run in this job — Go is
+    # the mandatory cross-language check; Python is an optional
+    # belt-and-braces step contributors can run locally
+    # (bash tests/fixtures/jcs/verify_python.sh).
+    name: JCS cross-language verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout justoci
+        uses: actions/checkout@v4
+        with:
+          path: justoci
+
+      - name: Checkout justcas (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: sweengineeringlabs/justcas
+          path: justcas
+          token: ${{ secrets.JUSTCAS_PAT }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: justoci -> justoci/target
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Verify fixtures match Rust impl (--check)
+        run: cargo run -p swe_justoci_oci_cli --bin regenerate-jcs-fixtures -- --check
+        working-directory: justoci
+
+      - name: Verify cross-language JCS agreement (Go)
+        run: bash tests/fixtures/jcs/verify_go.sh
+        working-directory: justoci
+
   msrv:
     # Verifies the workspace still compiles on the MSRV declared in
     # the root Cargo.toml's `[workspace.package]` block. Runs `cargo

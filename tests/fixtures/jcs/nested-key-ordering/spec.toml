@@ -1,0 +1,61 @@
+# Nested-object key ordering. JCS sorts keys lexicographically (UTF-8
+# code-unit order) at every level. This fixture deliberately writes
+# the [config] sub-tables and inline arrays in a NON-sorted order so
+# the canonicalised output proves the impl re-orders keys at every
+# nesting level — not just the top of [config].
+
+spec_version = "0"
+id           = "nested-keys:1"
+kind         = "raw_image"
+
+[[layers]]
+source     = "layer-files/blob.bin"
+media_type = "application/octet-stream"
+
+[config]
+# Inline tables in non-sorted source order. The canonicaliser MUST
+# emit them sorted by key at the inner level, not just at the top.
+zebra = { y = 1, x = 2, z = 3 }
+alpha = { delta = "d", beta = "b", gamma = "g", alpha = "a" }
+
+# Non-inline sub-table written in awkward source order.
+[config.network]
+port    = 8080
+host    = "0.0.0.0"
+backlog = 128
+timeout = 30
+
+[config.network.tls]
+verify   = true
+ca_path  = "/etc/ca.pem"
+cert     = "/etc/cert.pem"
+key      = "/etc/key.pem"
+min_ver  = "1.2"
+
+# Sub-sub-sub table — proves recursion to >=4 levels.
+[config.network.tls.ciphers]
+weak     = []
+strong   = ["TLS_AES_256_GCM_SHA384", "TLS_CHACHA20_POLY1305_SHA256"]
+medium   = ["TLS_AES_128_GCM_SHA256"]
+
+# Array of tables — each element keys must be sorted independently.
+[[config.routes]]
+target = "backend-a"
+weight = 50
+path   = "/v1"
+
+[[config.routes]]
+weight = 50
+path   = "/v2"
+target = "backend-b"
+
+# Annotations: BTreeMap iteration in Rust gives sorted keys, but the
+# wire ordering must be lex by UTF-8 code-units — confirm a key with
+# a numeric suffix sorts as a string ("foo.10" < "foo.2" because '1'
+# < '2' code-point, then '0' < '.').
+[annotations]
+"vendor.foo.2"  = "second"
+"vendor.foo.10" = "tenth"
+"vendor.foo.1"  = "first"
+"vendor.bar"    = "bar"
+"vendor.aaa"    = "aaa"

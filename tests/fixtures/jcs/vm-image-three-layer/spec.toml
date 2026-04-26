@@ -1,0 +1,60 @@
+# Realistic vm_image spec — exercises the production shape used by
+# vmisolate microVM artifacts. Three layers in kernel/initrd/rootfs
+# order (validation enforces this), [platform], [annotations],
+# explicit [attestation] block with non-default values, [config]
+# arrays + nested table.
+
+spec_version = "0"
+id           = "llmboot:0.1.14"
+kind         = "vm_image"
+description  = "llmboot LLM daemon — packaged as a vmisolate microVM"
+
+[platform]
+os   = "linux"
+arch = "x86_64"
+
+[[layers]]
+source      = "layer-files/downloads/bzImage"
+media_type  = "application/vnd.vmisolate.kernel+binary"
+
+[[layers]]
+source      = "layer-files/downloads/initrd.cpio"
+media_type  = "application/vnd.vmisolate.initrd.cpio+gzip"
+compression = "gzip"
+
+[[layers]]
+source      = "layer-files/downloads/rootfs-alpine.ext4"
+media_type  = "application/vnd.vmisolate.rootfs.ext4+gzip"
+compression = "gzip"
+
+[config]
+init_mode      = "xkinit"
+entrypoint     = ["/usr/bin/llmd", "serve", "--bind", "0.0.0.0:9000"]
+kernel_cmdline = "console=ttyS0 quiet"
+node_tags      = ["linux", "x86_64"]
+
+[config.env]
+RUST_LOG = "info"
+HOME     = "/root"
+
+[annotations]
+"org.opencontainers.image.title"       = "llmboot"
+"org.opencontainers.image.version"     = "0.1.14"
+"org.opencontainers.image.source"      = "https://github.com/sweengineeringlabs/llmboot"
+"org.opencontainers.image.description" = "llmboot LLM daemon packaged as a vmisolate VM"
+"org.opencontainers.image.licenses"    = "Apache-2.0"
+
+# Explicit attestation block with overrides — proves the projection
+# emits NON-default values verbatim and still includes optional
+# fields (builder_id, identity) when set.
+[attestation.slsa]
+level      = 3
+builder_id = "https://github.com/sweengineeringlabs/justoci/.github/workflows/release.yml@refs/tags/v0.1.14"
+
+[attestation.sbom]
+format = "spdx"
+scope  = "both"
+
+[attestation.sign]
+kind     = "cosign-keyless"
+identity = "https://github.com/sweengineeringlabs/llmboot/.github/workflows/release.yml@refs/tags/v0.1.14"

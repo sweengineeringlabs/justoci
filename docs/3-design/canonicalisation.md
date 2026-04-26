@@ -53,8 +53,33 @@ is an IETF standard. Key rules:
   the `\u` form on control characters.
 
 Implementations exist in Rust (`serde_jcs`), Go
-(`gowebpki/jcs`), Python (`pyjcs`), JS (`canonicalize`), and Java.
-A cross-implementation test fixture is on the v0.2 roadmap.
+(`gowebpki/jcs`), Python (`jcs`), JS (`canonicalize`), and Java.
+
+The cross-implementation test fixture set under
+[`tests/fixtures/jcs/`](../../tests/fixtures/jcs/) backs this
+portability claim. Each fixture ships a `spec.toml`, the JCS
+canonical bytes the Rust impl produces, and the resulting
+`sha256:<hex>` digest. CI's `jcs-cross-lang` job builds a Go
+re-implementation of the `spec_to_json` projection (under
+`tests/fixtures/jcs/verify_go/`), runs `gowebpki/jcs` against it,
+and asserts byte-for-byte agreement with the committed expected
+files. A Python verifier (`tests/fixtures/jcs/verify_python.py`)
+ships alongside for contributors who want the same check locally
+in Python; both verifiers re-implement the projection so the
+fixtures prove cross-*language* agreement, not that two halves of
+the same impl agree. See `docs/5-testing/strategy.md` for the
+fixture set's place in the overall test plan.
+
+When the projection rules legitimately change (a new field is
+added to `Spec`, an enum gets a new variant, etc.), regenerate
+the expected files via:
+
+```bash
+cargo run -p swe_justoci_oci_cli --bin regenerate-jcs-fixtures
+```
+
+Then update the Go and Python re-implementations to match, in the
+same commit.
 
 ## The `spec_to_json` projection
 

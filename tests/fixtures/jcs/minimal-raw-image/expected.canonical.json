@@ -1,0 +1,1 @@
+{"attestation":{"sbom":{"format":"cyclonedx","scope":"layers"},"sign":{"kind":"cosign-keyless"},"slsa":{"level":2}},"id":"anchor:1","kind":"raw_image","layers":[{"compression":"none","media_type":"application/octet-stream","source":"layer-files/blob.bin"}],"spec_version":"0"}

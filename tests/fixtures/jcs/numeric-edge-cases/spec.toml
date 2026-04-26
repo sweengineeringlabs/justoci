@@ -1,0 +1,43 @@
+# Numeric edge cases. JCS requires ECMA-262 / IEEE-754 round-trip form
+# for numbers — integers without a `.0` suffix, no leading zeros, no
+# trailing zeros after a fractional point, scientific notation only
+# when shorter, lowercase `e`, etc. The TOML source uses TOML's own
+# number forms (octal `0o644`, integer separators `1_000_000`) which
+# the parser MUST reduce to plain decimal integers before projection.
+
+spec_version = "0"
+id           = "numeric-edge:1"
+kind         = "raw_image"
+
+[[layers]]
+media_type = "application/x-tar"
+
+# Files block forces non-trivial integer round-tripping: `mode` is
+# parsed by TOML as an octal literal but stored as `u32`. The JSON
+# projection emits the decimal value (0o644 → 420). A re-impl that
+# preserves the textual form `"0o644"` will mismatch.
+[[layers.files]]
+source = "layer-files/build/file_with_octal_mode"
+dest   = "/etc/example/config"
+mode   = 0o644
+
+[[layers.files]]
+source = "layer-files/build/exec_octal"
+dest   = "/usr/bin/run"
+mode   = 0o755
+
+[config]
+# Numbers that exercise round-trip rules:
+size_bytes_large    = 4_194_304          # TOML integer separators must NOT survive
+size_bytes_max_i32  = 2147483647         # boundary: i32 max
+size_bytes_min_i32  = -2147483648        # boundary: i32 min
+zero                = 0                  # plain zero — must NOT be `-0` or `0.0`
+negative_zero_int   = -0                 # TOML allows; canonical form is `0`
+ratio_small         = 0.1                # repeating binary; ECMA-262 emits "0.1"
+ratio_round         = 0.5                # exact in binary; emits "0.5" not "5e-1"
+small_exponent      = 0.001              # ECMA-262 prefers "0.001" over "1e-3"
+large_exponent      = 1e21               # at >= 1e21 ECMA-262 switches to "1e+21"
+fraction_with_zero  = 1.0                # canonical form drops the `.0`? No — JCS
+                                         # keeps it because the source was a float,
+                                         # not an integer (TOML preserves the type).
+neg_one             = -1

@@ -25,6 +25,16 @@ path = "src/lib.rs"
 name = "ocimage"
 path = "src/main.rs"
 
+# Maintenance binary for the cross-language JCS fixture set under
+# `tests/fixtures/jcs/`. NOT shipped to operators — invoked by
+# contributors via `cargo run -p swe_justoci_oci_cli --bin
+# regenerate-jcs-fixtures` whenever the spec projection rules
+# legitimately change. CI's `jcs-cross-lang` job runs this with
+# `--check` to fail loudly if a fixture drifts from the Rust impl.
+[[bin]]
+name = "regenerate-jcs-fixtures"
+path = "src/bin/regenerate-jcs-fixtures.rs"
+
 [dependencies]
 # Internal crates the CLI dispatches into.
 spec        = { workspace = true }

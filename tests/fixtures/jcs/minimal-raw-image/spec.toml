@@ -1,0 +1,14 @@
+# Minimum-valid raw_image spec — the simplest input the canonicaliser
+# accepts. All optional blocks omitted (no [platform], no [config], no
+# [annotations], no [attestation]). Anchors the cross-language pipeline:
+# if the Go/Python re-impls disagree on this fixture, the basic pipeline
+# (TOML parse → projection → JCS → sha256) is broken before any edge
+# case enters the picture.
+
+spec_version = "0"
+id           = "anchor:1"
+kind         = "raw_image"
+
+[[layers]]
+source     = "layer-files/blob.bin"
+media_type = "application/octet-stream"
