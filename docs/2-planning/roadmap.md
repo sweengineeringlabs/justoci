@@ -47,8 +47,14 @@ Sigstore staging).
 
 - **`[[files]]` overlay support for `vm_image`** — vmisolate#70.
   The vmisolate adapter rejects non-empty `[[files]]` with a typed
-  error today. Cross-platform ext4 manipulation (mount → copy →
-  unmount → re-hash, or a portable Rust ext4 writer). 2-4 days.
+  error today. **Revised approach (2026-04-26):** generalise
+  vmisolate's existing initramfs-overlay pattern (`xkvm-fs` already
+  copies `/etc/resolv.conf` from initramfs into the mounted
+  rootfs.ext4 at boot — `mount.rs:131-137`). Pack `[[files]]` into
+  the initramfs CPIO at `/overlay/<dest>` + a `.manifest`; xkvm-fs
+  reads the manifest and writes each entry to `{rootfs}/<dest>`
+  via plain `std::fs::write` (kernel VFS handles the ext4 write).
+  Zero ext4 internals in our code, no wrappers. 1-2 days.
 - **HTTP Range-resumable blob pulls** — issue #8. Per-blob retry
   works today; mid-blob resume on long downloads is next. 1-2 days.
 - **Parallel layer downloads on pull** — issue #9. `--parallel <N>`
