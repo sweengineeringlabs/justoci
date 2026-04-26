@@ -38,12 +38,33 @@ pub enum AttestError {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    /// `cosign` is not on PATH. Operators get a clear actionable
-    /// message: install cosign or set `attestation.sign.kind = "off"`.
-    /// This is distinct from `SignFailed` because there is nothing to
-    /// retry — the host tooling is missing.
+    /// The signer is unavailable.
+    ///
+    /// On the **sigstore-rs** production path (default feature),
+    /// this variant means the OIDC identity token is not configured
+    /// — no `SIGSTORE_ID_TOKEN` or `OIDC_TOKEN` env var. The fix is
+    /// to provide an OIDC token (e.g. from GitHub Actions ambient
+    /// identity, or a Sigstore browser-OIDC flow piped through the
+    /// env var) or set `attestation.sign.kind = "off"`.
+    ///
+    /// On the **cosign-subprocess** fallback path (opt-in via
+    /// `--features cosign-subprocess`), this variant means the
+    /// `cosign` binary is not on `PATH`. The fix is to install
+    /// cosign from <https://github.com/sigstore/cosign> or set
+    /// `attestation.sign.kind = "off"`.
+    ///
+    /// The variant is named `CosignNotInstalled` for source-compat
+    /// with v0 (renaming would churn every test using the variant
+    /// for no semantic gain). Its Display message covers both
+    /// production paths so operators get an actionable hint
+    /// regardless of the active feature.
+    ///
+    /// Distinct from `SignFailed` because there is nothing to
+    /// retry — the host configuration is missing.
     #[error(
-        "cosign binary not found on PATH — install it from https://github.com/sigstore/cosign or set attestation.sign.kind = \"off\""
+        "signer unavailable: provide an OIDC token via SIGSTORE_ID_TOKEN or OIDC_TOKEN \
+        (sigstore-rs path), OR install cosign on PATH (cosign-subprocess path), \
+        OR set attestation.sign.kind = \"off\""
     )]
     CosignNotInstalled,
 

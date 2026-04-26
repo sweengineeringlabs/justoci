@@ -31,7 +31,28 @@ interpretations:
 The product opinion is **interpretation 2**. Half-signed states
 are how supply-chain compromises hide. We refuse the gradient.
 
-## The flow
+## v0.2 — sigstore-rs is the production path
+
+As of issue #13, the production signer is the linked-in
+[`sigstore`](https://crates.io/crates/sigstore) Rust SDK
+(`SigstoreInvoker` in `attest/src/core/sigstore_invoker.rs`),
+gated behind the `sigstore-rs` Cargo feature (default-on).
+
+The cosign subprocess is kept as an opt-in fallback behind the
+`cosign-subprocess` feature (`RealCosignInvoker` in
+`attest/src/core/cosign.rs`). Operators who need it
+(e.g. air-gapped builds with a managed cosign install, BYO-key
+mode) build with:
+
+```bash
+cargo build --no-default-features --features cosign-subprocess
+```
+
+Both implementations satisfy the same `CosignInvoker` trait, so
+every test in `attest/tests/` runs against both — the §6 contract
+is exercised on both code paths.
+
+## The flow (sigstore-rs path — default)
 
 ```
                 ┌──────────────────────────────┐
@@ -46,73 +67,171 @@ are how supply-chain compromises hide. We refuse the gradient.
                                │ yes
                                ▼
                 ┌──────────────────────────────┐
-                │  CosignInvoker::sign         │
+                │  SigstoreInvoker::invoke     │
+                │   resolve OIDC token from    │
+                │   SIGSTORE_ID_TOKEN /        │
+                │   OIDC_TOKEN env             │
+                └──────────────┬───────────────┘
+                               │
+              ┌────────────────┼────────────────┐
+              │ token absent   │ token present  │
+              ▼                ▼
+       CosignNotInstalled  SigningContext::production()
+       (signer-unavailable)     │
+                                ▼
+                ┌──────────────────────────────┐
+                │  ctx.blocking_signer(token)  │
+                │   Fulcio CSR exchange        │
+                └──────────────┬───────────────┘
+                               │
+              ┌────────────────┼────────────────┐
+              │ Fulcio fails   │ session opens
+              ▼                ▼
+         SignFailed        session.sign(payload)
+                                │   ↓ inside the SDK:
+                                │   1. sign payload
+                                │   2. POST to Rekor
+                                │   3. if Rekor fails, ENTIRE
+                                │      sign() returns Err
+                                │
+              ┌─────────────────┼────────────────┐
+              │ SDK Err         │ SDK Ok(SigningArtifact)
+              ▼                 ▼
+         SignFailed        artifact.to_bundle() →
+        (covers both:        serde_json::to_vec(&bundle)
+         Fulcio failure        │
+         AND Rekor failure)    ▼
+                          extract logIndex from
+                          verificationMaterial.tlogEntries[0]
+                                │
+              ┌─────────────────┼─────────────────┐
+              │ logIndex        │ logIndex        │
+              │ present         │ absent (defensive)
+              ▼                 ▼
+       Signature           SignNotRecorded
+       (recorded)          (SDK regression guard)
+```
+
+Key observation: **the §6 Rekor-coupling check moves from "parse
+the bundle" (subprocess path) to "trust the SDK return value"
+(sigstore-rs path)**. The SDK's `SigningSession::sign` is
+structured so it only returns `Ok(SigningArtifact)` when Rekor
+recorded the entry — a Rekor failure surfaces as
+`SigstoreError::RekorClientError`, which we map to
+`CosignOutcome::SignFailed`. The audit reference is
+[`sigstore-rs/src/bundle/sign.rs`](https://github.com/sigstore/sigstore-rs/blob/main/src/bundle/sign.rs)
+at v0.13.0.
+
+We **still** parse the returned bundle's `logIndex` for
+`Signature::rekor_log_index` (operators rely on it for post-hoc
+Rekor lookup), and we **still** treat an empty
+`tlogEntries` array as `SignedNotRecorded` — defensive guard
+against a future SDK regression that could ship a Rekor-less
+bundle.
+
+## The flow (cosign-subprocess path — fallback)
+
+The legacy v0 flow. Documented for operators who need it.
+
+```
+                ┌──────────────────────────────┐
+                │  RealCosignInvoker::invoke   │
                 │   spawn `cosign sign-blob`   │
                 └──────────────┬───────────────┘
                                │
               ┌────────────────┼────────────────┐
-              │                │                │
-            error            stdout         exit code
-                                │
-                                ▼
-                ┌──────────────────────────────┐
-                │  parse cosign bundle         │
-                │  extract rekorBundle.        │
-                │   Payload.logIndex           │
-                └──────────────┬───────────────┘
-                               │
-              ┌────────────────┼────────────────┐
-              │ logIndex       │ logIndex       │ logIndex
-              │ present        │ absent         │ unparseable
+              │ exec fails     │ exit non-zero  │ exit 0
               ▼                ▼                ▼
-       Signature         SignNotRecorded   SignNotRecorded
-       (recorded)        (Rekor failed     (cosign output
-                          OR --no-rekor    malformed —
-                          mode used)       defensive default)
+       SignFailed         SignFailed        parse cosign bundle
+                                                │
+                              ┌─────────────────┼─────────────────┐
+                              │ rekorBundle.    │ rekorBundle.    │ rekorBundle
+                              │ Payload.        │ Payload.        │ block missing
+                              │ logIndex        │ logIndex        │ entirely
+                              │ present         │ absent          │
+                              ▼                 ▼                 ▼
+                       Signature           SignNotRecorded   SignNotRecorded
+                       (recorded)          (--no-tlog-       (Rekor outage,
+                                            upload mode)      malformed bundle,
+                                                              etc.)
 ```
 
-## Why subprocess (for v0)
+Same end-state: `Signature` only emerges when Rekor recorded.
+The bundle parser lives in
+`attest/src/core/cosign.rs::extract_cosign_legacy_log_index`
+(only compiled under `cosign-subprocess`).
 
-`attest/src/core/cosign.rs` invokes the `cosign` binary as a
-subprocess. Reasons:
+## Bundle shape — sigstore-rs vs subprocess
 
-1. **No Rust SDK link debt.** `sigstore-rs` exists but adds a
-   significant transitive dependency footprint. v0 ships
-   subprocess; v0.2 swaps the implementation behind the
-   `CosignInvoker` trait.
-2. **Cosign is the de facto reference.** Every test expectation
-   matches what `cosign verify-blob` would produce in the wild.
-3. **Easy to stub for tests.** `StubCosignInvoker` returns
-   scripted outcomes; production tests never hit the network.
+The two paths emit **different** bundle JSON. Verifiers should
+treat both as opaque blobs (look up by digest in the OCI
+referrer index, hand to cosign-verify-blob), but operators
+debugging the wire format should know:
 
-The cost: cosign must be on PATH at production runtime. CI
-installs it via `sigstore/cosign-installer@v3`; operators
-running `ocimage build --attest` in production do the same.
+| Path | Media type | logIndex location | logIndex JSON type |
+|------|------------|-------------------|--------------------|
+| sigstore-rs (default) | `application/vnd.dev.sigstore.bundle.v0.3+json` | `verificationMaterial.tlogEntries[0].logIndex` | string (protobuf int64 JSON) |
+| cosign-subprocess (fallback) | legacy cosign bundle | `rekorBundle.Payload.logIndex` | number |
+
+Both are stored under the same OCI referrer media type
+(`application/vnd.dev.cosign.simplesigning.v1+json`) for
+ecosystem compatibility — the wider cosign tooling keys off it.
+A future change may split this; for now, keying both bundle
+formats off the same media type means a verifier needs to
+content-sniff the JSON to decide which parser to use. That's
+acceptable v0.2 trade-off; documented here for the verify-side
+implementer.
+
+## OIDC identity token sourcing (sigstore-rs path)
+
+Sigstore keyless signing requires a JWT whose `aud` claim is
+`"sigstore"`. `SigstoreInvoker` does **not** run the interactive
+browser-based OIDC flow — justoci is invoked from CI and operator
+scripts; popping a browser is the wrong UX. The token is read
+from environment variables, in priority order:
+
+1. `SIGSTORE_ID_TOKEN` — sigstore convention.
+2. `OIDC_TOKEN` — generic fallback.
+
+If neither is set, the invoker returns
+`AttestError::CosignNotInstalled` (the variant name is
+historical; under sigstore-rs it means "signer unavailable —
+provide an OIDC token"). The error message covers both
+production paths so operators get an actionable hint regardless
+of the active feature.
+
+GitHub Actions workflows requesting an ambient OIDC identity
+expose `ACTIONS_ID_TOKEN_REQUEST_TOKEN`; the workflow must
+exchange that for a sigstore-aud token (e.g. via
+`actions/oidc-token`) and export it as `SIGSTORE_ID_TOKEN`.
 
 ## The `CosignInvoker` trait
 
 ```rust
 pub trait CosignInvoker: Send + Sync {
-    fn sign(&self, manifest_digest: &Digest, sign_cfg: &SignConfig)
-        -> Result<CosignOutcome, AttestError>;
+    fn invoke(&self, invocation: &CosignInvocation) -> CosignOutcome;
 }
 
 pub enum CosignOutcome {
     /// Signed AND Rekor confirmed.
-    VerifiedAndRecorded { bundle: SignatureBundle, log_index: u64 },
+    SignedAndRecorded { bundle_bytes: Vec<u8>, log_index: u64 },
     /// Signed but Rekor entry missing or unparseable.
     /// Caller maps to AttestError::SignNotRecorded.
-    VerifiedNotRecorded { bundle: SignatureBundle },
-    /// cosign exited non-zero / signature validation failed.
-    InvalidSignature { stderr: String },
-    /// cosign not on PATH.
+    SignedNotRecorded { reason: String },
+    /// Sign step itself failed.
+    SignFailed { stderr: String },
+    /// Signer unavailable (cosign not on PATH on the subprocess
+    /// path; OIDC token unset on the sigstore-rs path).
     CosignNotInstalled,
 }
 ```
 
-The trait is the migration seam. v0.2 swaps `RealCosignInvoker`
-(subprocess) for a `SigstoreInvoker` (linked-in `sigstore-rs`)
-without touching the rest of `attest` or `cli`.
+The trait predates the sigstore-rs migration; we kept the name
+to avoid churn across every test. The trait is still the
+migration seam — a hypothetical v0.3 invoker (e.g. against a
+private Sigstore instance, or a custom KMS) implements the same
+trait and slots into `attest_with_invoker` without changing any
+caller.
 
 ## Verify-side
 
@@ -126,6 +245,11 @@ outcome, and `ocimage verify` reports it as not-fully-attested
 (or with `--policy [sign].required = true`, fails the verify with
 exit 5).
 
+A future iteration will migrate the verify path to sigstore-rs
+too (issue #13's sibling). v0.2 keeps verify on the subprocess
+path because the verify wire is much smaller (no OIDC, no
+Fulcio) and the audit cost-benefit was wrong for v0.2.
+
 ## What this means in practice
 
 If you're an operator running `ocimage build` and Rekor is down:
@@ -133,9 +257,8 @@ If you're an operator running `ocimage build` and Rekor is down:
 ```bash
 $ ocimage build spec.toml -o dist/
 Error: AttestError::SignNotRecorded
-  cosign signed manifest digest sha256:abc... but no Rekor log
-  index was returned. Inspect cosign output:
-    <stderr lines>
+  signature was not recorded in Rekor (artifact is unsigned):
+  rekor.sigstore.dev returned 503 (Service Unavailable)
   Re-run when Rekor is reachable, or build with --no-attest if
   signing must be deferred.
 ```
@@ -149,10 +272,10 @@ If you're verifying:
 
 ```bash
 $ ocimage verify ghcr.io/acme/firmware:1.4.2
-[✓] SLSA statement found and well-formed (level 2)
-[✓] CycloneDX SBOM found (8 components)
-[✗] Cosign signature found but no Rekor log entry — artifact is
-    unsigned per the cosign+Rekor coupled rule
+[OK] SLSA statement found and well-formed (level 2)
+[OK] CycloneDX SBOM found (8 components)
+[FAIL] Cosign signature found but no Rekor log entry — artifact is
+       unsigned per the cosign+Rekor coupled rule
 Exit 5: VerifyError::PolicyViolation { rule: "sign.required" }
 ```
 

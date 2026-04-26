@@ -29,12 +29,30 @@ workspace.
   (mount → copy → unmount → re-hash) or a portable Rust ext4
   writer. Tracked as v0.1 work for the adapter.
 
-- **`sigstore-rs` migration in `attest`** — replace the cosign
-  subprocess shell-out with the linked-in
-  [`sigstore-rs`](https://github.com/sigstore/sigstore-rs) SDK.
-  Same security guarantees (Fulcio + Rekor + transparency log),
-  no PATH dependency in production. The `CosignInvoker` trait is
-  the migration seam — swap the implementation, keep the API.
+- ~~**`sigstore-rs` migration in `attest`**~~ — **DONE (issue
+  #13)**. The cosign subprocess shell-out has been replaced with
+  the linked-in [`sigstore`](https://crates.io/crates/sigstore)
+  SDK as the production path. Same security guarantees (Fulcio +
+  Rekor + transparency log), no PATH dependency. The
+  `CosignInvoker` trait was the migration seam: the new
+  `SigstoreInvoker` and the legacy `RealCosignInvoker` (now
+  gated behind the opt-in `cosign-subprocess` feature) both
+  implement it, and every existing test runs against both via
+  `StubCosignInvoker` injection. The §6 Rekor-coupling rule is
+  preserved end-to-end — sigstore-rs's `SigningSession::sign`
+  errors when Rekor write fails, so a Rekor-less bundle is
+  unreachable on the new path. See `docs/3-design/cosign-rekor.md`
+  for the updated flow.
+
+- **Real Sigstore staging end-to-end test (issue #14)** — still
+  pending. Issue #13 ships the SDK migration with stubbed unit +
+  integration tests; #14 adds a `#[ignore]`-gated test that
+  drives a real OIDC flow against `fulcio.sigstage.dev` /
+  `rekor.sigstage.dev` from a CI job with `id-token: write`. Not
+  shipped inline with #13 because the GitHub Actions OIDC bootstrap
+  is non-trivial and the failure modes (token exchange, audience
+  mismatch, staging-trust-root drift) are best handled in their
+  own commit.
 
 - **`--require-referrers` strict mode for verify** — today, a
   registry that returns 404 on `/v2/.../referrers/<digest>` is

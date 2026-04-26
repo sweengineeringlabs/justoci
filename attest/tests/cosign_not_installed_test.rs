@@ -21,11 +21,17 @@ use cas::FsCas;
 use spec::{AttestationConfig, SignConfig, SignKind};
 use tempfile::TempDir;
 
-use attest::core::cosign::{
-    CosignInvocation, CosignInvoker, CosignOutcome, RealCosignInvoker, StubCosignInvoker,
-};
+use attest::core::cosign::{CosignOutcome, StubCosignInvoker};
 use attest::saf::attest::attest_with_invoker;
 use attest::AttestError;
+
+// `RealCosignInvoker` only exists under the `cosign-subprocess`
+// Cargo feature; the PATH-probe test below is gated on that feature
+// because it has no meaning on the sigstore-rs path (no PATH lookup
+// happens). The `attest_with_invoker` mapping test above stays
+// unconditional — it depends only on the trait and stub.
+#[cfg(feature = "cosign-subprocess")]
+use attest::core::cosign::{CosignInvocation, CosignInvoker, RealCosignInvoker};
 
 #[test]
 fn test_attest_maps_cosign_not_installed_outcome_to_typed_error() {
@@ -50,6 +56,7 @@ fn test_attest_maps_cosign_not_installed_outcome_to_typed_error() {
     }
 }
 
+#[cfg(feature = "cosign-subprocess")]
 #[test]
 #[ignore = "mutates process-global PATH; run with --ignored after isolated tests pass"]
 fn test_real_invoker_returns_cosign_not_installed_when_path_has_no_cosign() {

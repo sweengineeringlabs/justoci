@@ -11,6 +11,23 @@ rust-version.workspace = true
 name = "attest"
 path = "src/lib.rs"
 
+[features]
+# `sigstore-rs` is the production signer (linked-in Rust SDK,
+# no PATH dependency). `cosign-subprocess` is the legacy
+# escape-hatch — kept behind a feature flag so operators stuck
+# in environments where the sigstore-rs dep tree is unwelcome
+# (e.g. wasm targets, restricted reqwest TLS choices) can still
+# build a working binary by shelling out to `cosign`.
+#
+# Exactly one of the two features must be active. The lib root
+# enforces this with a compile-time `cfg!()` guard so a build
+# with `--no-default-features` and no signer feature fails fast
+# rather than silently producing a binary that panics at first
+# sign call.
+default              = ["sigstore-rs"]
+sigstore-rs          = ["dep:sigstore"]
+cosign-subprocess    = []
+
 [dependencies]
 # Internal sibling crates.
 spec       = { workspace = true }
@@ -26,6 +43,19 @@ serde_json = { workspace = true }
 
 thiserror  = { workspace = true }
 tracing    = { workspace = true }
+
+# sigstore-rs SDK — used by `core::sigstore_invoker::SigstoreInvoker`
+# (the production CosignInvoker). Pinned to 0.13.x; minor bumps
+# may change the SigningContext / SigningSession / Bundle surface.
+# The features list is chosen narrowly: we only need keyless
+# signing against the public Sigstore trust root, with rustls (no
+# system openssl). `cached-client` and `mock-client` are NOT
+# enabled — we do our own indirection via `CosignInvoker`.
+sigstore = { version = "0.13", optional = true, default-features = false, features = [
+    "sign",
+    "sigstore-trust-root",
+    "rustls-tls",
+] }
 
 [dev-dependencies]
 # Tempdir-backed `FsCas` in tests + cosign stub harnesses.

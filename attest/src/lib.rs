@@ -8,9 +8,15 @@
 //!    `https://slsa.dev/provenance/v1`.
 //! 2. **SBOM** — CycloneDX 1.5 or SPDX 2.3 listing the artifact's
 //!    components.
-//! 3. **Signature** — cosign signature over the manifest digest with
-//!    Rekor coupling (no half-states: sign-success without a Rekor
-//!    record is reported as `SignNotRecorded`, not as success).
+//! 3. **Signature** — Sigstore (cosign-compatible) signature over
+//!    the manifest digest with Rekor coupling (no half-states:
+//!    sign-success without a Rekor record is reported as
+//!    `SignNotRecorded`, not as success). The production path
+//!    links the [`sigstore`](https://crates.io/crates/sigstore) SDK
+//!    directly (feature `sigstore-rs`, default-on); a legacy cosign
+//!    subprocess invoker is available behind feature
+//!    `cosign-subprocess` for environments where the SDK dep tree
+//!    is unwelcome. See `docs/3-design/cosign-rekor.md`.
 //!
 //! Defaults (no `[attestation]` block in the spec) → SLSA L2 +
 //! CycloneDX layers + cosign-keyless. Each pillar is independently

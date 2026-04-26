@@ -14,33 +14,45 @@
 //! is no half-state where we record the signature blob without a
 //! Rekor receipt.
 //!
-//! ## Subprocess vs SDK
+//! ## Two production implementations, one trait
 //!
-//! v0 invokes the `cosign` binary as a subprocess. Pulling
-//! `sigstore-rs` would add a non-trivial dep tree (rustls, oauth2,
-//! etc.). The trade-off is documented: operators must have `cosign`
-//! installed (>=2.0) to sign with justoci. If it's missing we
-//! return `AttestError::CosignNotInstalled` — distinct from
-//! `SignFailed`, because there's nothing to retry; the host tooling
-//! is missing.
+//! v0.2 ships **two** implementations of `CosignInvoker`, selected
+//! at compile time by Cargo features:
+//!
+//! - `SigstoreInvoker` (default, feature `sigstore-rs`) — links the
+//!   [`sigstore`](https://crates.io/crates/sigstore) SDK directly.
+//!   No PATH dependency, typed errors from the SDK, faster
+//!   (no subprocess spawn). Lives in
+//!   [`crate::core::sigstore_invoker`].
+//! - `RealCosignInvoker` (opt-in, feature `cosign-subprocess`) —
+//!   spawns the `cosign` binary as a subprocess. Kept as an escape
+//!   hatch for environments where the sigstore-rs dep tree is
+//!   unwelcome (wasm, restricted reqwest TLS choices, etc.). Lives
+//!   in this file gated behind `#[cfg(feature = "cosign-subprocess")]`.
+//!
+//! Both implementations are interchangeable via the `CosignInvoker`
+//! trait; downstream code (and every test in `tests/`) uses the
+//! trait, never a concrete type.
+//!
+//! ## Why "Cosign" stays in the trait name
+//!
+//! The trait predates the sigstore-rs migration. Renaming it would
+//! be churn that breaks every test using `CosignInvoker` /
+//! `CosignOutcome` / `CosignInvocation` for no semantic gain —
+//! sigstore-rs implements the same conceptual operation cosign
+//! does (sign a digest, record in Rekor), so the trait name still
+//! describes the contract, just not the transport.
 //!
 //! ## Testability
 //!
-//! The `CosignInvoker` trait isolates the subprocess boundary. Tests
-//! supply a `StubCosignInvoker` that returns scripted outcomes
-//! without touching PATH. Production calls pass `RealCosignInvoker`,
-//! which spawns the actual `cosign sign-blob --bundle ...`
-//! subprocess. The bundle JSON cosign emits already contains the
-//! Rekor inclusion proof + log index, so "Rekor confirmed" reduces
-//! to "the bundle has a populated `rekorBundle.Payload.logIndex`"
-//! at parse time. Cosign bundles without a Rekor entry indicate
-//! `--no-tlog-upload` was set, and we treat that as "not recorded".
-
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
+//! The trait isolates the signer boundary. Tests supply
+//! `StubCosignInvoker` (always available, regardless of which
+//! production feature is on) that returns scripted outcomes
+//! without touching the network or the local PATH. Production
+//! calls pass `SigstoreInvoker` or `RealCosignInvoker` depending
+//! on the active feature.
 
 use cas::{Cas, Digest};
-use serde_json::Value;
 use spec::{SignConfig, SignKind};
 
 use crate::api::attestation::Signature;
@@ -48,30 +60,48 @@ use crate::api::error::AttestError;
 
 /// Cosign signature media type for OCI 1.1 referrers. Cosign's
 /// "simple signing" format wraps the DSSE envelope in a
-/// content-addressable JSON document.
-const COSIGN_MEDIA_TYPE: &str = "application/vnd.dev.cosign.simplesigning.v1+json";
+/// content-addressable JSON document. Sigstore-rs emits a
+/// protobuf-shaped Bundle (media type
+/// `application/vnd.dev.sigstore.bundle.v0.3+json`); we keep this
+/// media type for the OCI referrer because the wider cosign
+/// ecosystem (registries, verifiers, scanners) keys off it.
+/// Recording the actual bundle media type is a future change.
+pub const COSIGN_MEDIA_TYPE: &str = "application/vnd.dev.cosign.simplesigning.v1+json";
 
 /// Outcome of a single cosign invocation, normalised so the calling
 /// code (which is responsible for the coupling check) can branch on
 /// it without parsing stderr.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CosignOutcome {
-    /// cosign succeeded AND the bundle contains a Rekor inclusion
-    /// proof. `bundle_bytes` is the cosign bundle JSON; `log_index`
-    /// is the parsed Rekor log index.
+    /// Sign succeeded AND the bundle contains a Rekor inclusion
+    /// proof. `bundle_bytes` is the cosign / sigstore bundle JSON;
+    /// `log_index` is the parsed Rekor log index.
     SignedAndRecorded {
         bundle_bytes: Vec<u8>,
         log_index: u64,
     },
-    /// cosign succeeded but the bundle has no Rekor entry (typical
-    /// of `--no-tlog-upload` or a Rekor outage). Per spec §6 this
+    /// Sign succeeded but the bundle has no Rekor entry (typical
+    /// of `cosign sign-blob --no-tlog-upload` on the subprocess
+    /// path; effectively unreachable on the sigstore-rs path
+    /// because the SDK errors instead of returning a Rekor-less
+    /// bundle, but the variant remains so the trait surface is
+    /// stable across both implementations). Per spec §6 this
     /// surfaces as `SignNotRecorded`. `reason` describes why the
     /// Rekor entry was absent — for operators reading the error.
     SignedNotRecorded { reason: String },
-    /// cosign itself returned a non-zero exit code.
+    /// Sign itself returned an error — non-zero exit on the
+    /// subprocess path, or any non-Rekor `SigstoreError` on the
+    /// sigstore-rs path (network, OIDC, certificate, etc.).
     SignFailed { stderr: String },
-    /// `cosign` is not on PATH. Distinct from a spawn IO error
-    /// because the actionable response is "install cosign".
+    /// The signer is unavailable. On the subprocess path that means
+    /// the `cosign` binary is missing from `PATH`. On the
+    /// sigstore-rs path that means the OIDC identity token is not
+    /// configured (no `SIGSTORE_ID_TOKEN` / `OIDC_TOKEN` env var)
+    /// — there is no JWT to present to Fulcio, so signing cannot
+    /// proceed. The variant name is kept as `CosignNotInstalled`
+    /// for source compatibility with the v0 API; the actionable
+    /// guidance differs per active feature and is communicated via
+    /// the `AttestError::CosignNotInstalled` Display.
     CosignNotInstalled,
 }
 
@@ -85,134 +115,232 @@ pub struct CosignInvocation {
     pub identity: Option<String>,
 }
 
-/// Indirection over `cosign` invocation. Production uses
-/// `RealCosignInvoker`; tests use `StubCosignInvoker` to inject
-/// outcomes (sign+rekor success, sign-success-rekor-fail,
-/// sign-fail, cosign-missing).
+/// Indirection over the signer. Production uses one of
+/// `SigstoreInvoker` / `RealCosignInvoker` (pick at compile time
+/// via the Cargo feature flags); tests use `StubCosignInvoker` to
+/// inject outcomes (sign+rekor success, sign-success-rekor-fail,
+/// sign-fail, signer-unavailable).
 pub trait CosignInvoker: Send + Sync {
     fn invoke(&self, invocation: &CosignInvocation) -> CosignOutcome;
 }
 
-/// Production `CosignInvoker` — spawns `cosign sign-blob ...`.
-pub struct RealCosignInvoker;
+// ─── Subprocess implementation ─────────────────────────────────────────────
 
-impl RealCosignInvoker {
-    pub fn new() -> Self {
-        RealCosignInvoker
-    }
-}
+/// Production `CosignInvoker` — spawns `cosign sign-blob ...`. Kept
+/// behind the `cosign-subprocess` feature flag. The default
+/// production path is the sigstore-rs implementation in
+/// `crate::core::sigstore_invoker::SigstoreInvoker`.
+#[cfg(feature = "cosign-subprocess")]
+pub use self::subprocess_impl::RealCosignInvoker;
 
-impl Default for RealCosignInvoker {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+#[cfg(feature = "cosign-subprocess")]
+mod subprocess_impl {
+    use super::{CosignInvocation, CosignInvoker, CosignOutcome};
+    use spec::SignKind;
+    use std::path::PathBuf;
+    use std::process::{Command, Stdio};
 
-impl CosignInvoker for RealCosignInvoker {
-    fn invoke(&self, invocation: &CosignInvocation) -> CosignOutcome {
-        if !cosign_on_path() {
-            return CosignOutcome::CosignNotInstalled;
+    /// Subprocess-based `CosignInvoker`. Spawns `cosign sign-blob
+    /// --bundle <tmp> <payload>`, parses the resulting bundle for
+    /// the Rekor log index, and routes outcomes through the trait.
+    pub struct RealCosignInvoker;
+
+    impl RealCosignInvoker {
+        pub fn new() -> Self {
+            RealCosignInvoker
         }
+    }
 
-        // Materialise the manifest-digest string as a payload file
-        // — cosign sign-blob signs the bytes of a file, and we want
-        // to sign the digest string itself (the OCI digest is a
-        // stable identifier for the artifact). A future iteration
-        // signing the manifest *bytes* would fetch them from CAS;
-        // we keep v0 simple by signing the digest string.
-        let payload_path = match write_payload_tempfile(invocation.manifest_digest.to_string()) {
-            Ok(p) => p,
-            Err(e) => {
-                return CosignOutcome::SignFailed {
-                    stderr: format!("could not write cosign payload temp file: {e}"),
-                };
+    impl Default for RealCosignInvoker {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    impl CosignInvoker for RealCosignInvoker {
+        fn invoke(&self, invocation: &CosignInvocation) -> CosignOutcome {
+            if !cosign_on_path() {
+                return CosignOutcome::CosignNotInstalled;
             }
-        };
-        let bundle_path = payload_path.with_extension("bundle.json");
 
-        let mut cmd = Command::new("cosign");
-        cmd.arg("sign-blob")
-            .arg("--yes")
-            .arg("--bundle")
-            .arg(&bundle_path);
+            // Materialise the manifest-digest string as a payload file
+            // — cosign sign-blob signs the bytes of a file, and we want
+            // to sign the digest string itself (the OCI digest is a
+            // stable identifier for the artifact). A future iteration
+            // signing the manifest *bytes* would fetch them from CAS;
+            // we keep v0 simple by signing the digest string.
+            let payload_path = match write_payload_tempfile(invocation.manifest_digest.to_string())
+            {
+                Ok(p) => p,
+                Err(e) => {
+                    return CosignOutcome::SignFailed {
+                        stderr: format!("could not write cosign payload temp file: {e}"),
+                    };
+                }
+            };
+            let bundle_path = payload_path.with_extension("bundle.json");
 
-        match invocation.kind {
-            SignKind::CosignKey => {
-                let key_path = match invocation.identity.as_ref() {
-                    Some(p) => p,
-                    None => {
-                        let _ = std::fs::remove_file(&payload_path);
-                        return CosignOutcome::SignFailed {
-                            stderr: "cosign-key mode requires sign.identity to point at a keyfile"
-                                .to_string(),
-                        };
+            let mut cmd = Command::new("cosign");
+            cmd.arg("sign-blob")
+                .arg("--yes")
+                .arg("--bundle")
+                .arg(&bundle_path);
+
+            match invocation.kind {
+                SignKind::CosignKey => {
+                    let key_path = match invocation.identity.as_ref() {
+                        Some(p) => p,
+                        None => {
+                            let _ = std::fs::remove_file(&payload_path);
+                            return CosignOutcome::SignFailed {
+                                stderr:
+                                    "cosign-key mode requires sign.identity to point at a keyfile"
+                                        .to_string(),
+                            };
+                        }
+                    };
+                    cmd.arg("--key").arg(key_path);
+                }
+                SignKind::CosignKeyless => {
+                    if let Some(identity) = invocation.identity.as_ref() {
+                        cmd.arg("--identity-token").arg(identity);
                     }
-                };
-                cmd.arg("--key").arg(key_path);
-            }
-            SignKind::CosignKeyless => {
-                if let Some(identity) = invocation.identity.as_ref() {
-                    cmd.arg("--identity-token").arg(identity);
+                }
+                SignKind::Off => {
+                    let _ = std::fs::remove_file(&payload_path);
+                    // The caller (`sign_with`) short-circuits Off before
+                    // ever invoking the trait; reaching here is a bug.
+                    return CosignOutcome::SignFailed {
+                        stderr: "cosign invoker called with SignKind::Off (programmer error)"
+                            .to_string(),
+                    };
                 }
             }
-            SignKind::Off => {
+
+            cmd.arg(&payload_path);
+            cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+
+            let output = match cmd.output() {
+                Ok(o) => o,
+                Err(e) => {
+                    let _ = std::fs::remove_file(&payload_path);
+                    return CosignOutcome::SignFailed {
+                        stderr: format!("failed to run cosign sign-blob: {e}"),
+                    };
+                }
+            };
+
+            if !output.status.success() {
                 let _ = std::fs::remove_file(&payload_path);
-                // The caller (`sign_with`) short-circuits Off before
-                // ever invoking the trait; reaching here is a bug.
+                let _ = std::fs::remove_file(&bundle_path);
                 return CosignOutcome::SignFailed {
-                    stderr: "cosign invoker called with SignKind::Off (programmer error)"
-                        .to_string(),
+                    stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
                 };
             }
-        }
 
-        cmd.arg(&payload_path);
-        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+            // Read the bundle file cosign wrote. Parse it for the Rekor
+            // log index — its presence is our coupling check.
+            let bundle_bytes = match std::fs::read(&bundle_path) {
+                Ok(b) => b,
+                Err(e) => {
+                    let _ = std::fs::remove_file(&payload_path);
+                    return CosignOutcome::SignedNotRecorded {
+                        reason: format!("cosign succeeded but bundle file unreadable: {e}"),
+                    };
+                }
+            };
 
-        let output = match cmd.output() {
-            Ok(o) => o,
-            Err(e) => {
-                let _ = std::fs::remove_file(&payload_path);
-                return CosignOutcome::SignFailed {
-                    stderr: format!("failed to run cosign sign-blob: {e}"),
-                };
-            }
-        };
-
-        if !output.status.success() {
             let _ = std::fs::remove_file(&payload_path);
             let _ = std::fs::remove_file(&bundle_path);
-            return CosignOutcome::SignFailed {
-                stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
-            };
-        }
 
-        // Read the bundle file cosign wrote. Parse it for the Rekor
-        // log index — its presence is our coupling check.
-        let bundle_bytes = match std::fs::read(&bundle_path) {
-            Ok(b) => b,
-            Err(e) => {
-                let _ = std::fs::remove_file(&payload_path);
-                return CosignOutcome::SignedNotRecorded {
-                    reason: format!("cosign succeeded but bundle file unreadable: {e}"),
-                };
+            match super::extract_cosign_legacy_log_index(&bundle_bytes) {
+                Some(log_index) => CosignOutcome::SignedAndRecorded {
+                    bundle_bytes,
+                    log_index,
+                },
+                None => CosignOutcome::SignedNotRecorded {
+                    reason: "cosign bundle has no rekorBundle.Payload.logIndex (Rekor entry not recorded — likely --no-tlog-upload or Rekor outage)".to_string(),
+                },
             }
-        };
-
-        let _ = std::fs::remove_file(&payload_path);
-        let _ = std::fs::remove_file(&bundle_path);
-
-        match extract_rekor_log_index(&bundle_bytes) {
-            Some(log_index) => CosignOutcome::SignedAndRecorded {
-                bundle_bytes,
-                log_index,
-            },
-            None => CosignOutcome::SignedNotRecorded {
-                reason: "cosign bundle has no rekorBundle.Payload.logIndex (Rekor entry not recorded — likely --no-tlog-upload or Rekor outage)".to_string(),
-            },
         }
     }
+
+    /// Walk `PATH` looking for an executable named `cosign` (or
+    /// `cosign.exe` on Windows). Returns `false` if the env var is
+    /// unset, the directories don't exist, or no executable matches.
+    fn cosign_on_path() -> bool {
+        let exe_names: &[&str] = if cfg!(windows) {
+            &["cosign.exe", "cosign"]
+        } else {
+            &["cosign"]
+        };
+
+        let path_var = match std::env::var_os("PATH") {
+            Some(p) => p,
+            None => return false,
+        };
+
+        for dir in std::env::split_paths(&path_var) {
+            for name in exe_names {
+                let candidate = dir.join(name);
+                if candidate.is_file() {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    fn write_payload_tempfile(content: String) -> std::io::Result<PathBuf> {
+        let mut path = std::env::temp_dir();
+        path.push(format!(
+            "justoci-cosign-payload-{}-{}.txt",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::write(&path, content)?;
+        Ok(path)
+    }
 }
+
+/// Cosign-bundle (legacy v0.x shape) Rekor-log-index extractor.
+///
+/// Cosign's legacy bundle JSON looks like:
+///
+/// ```text
+/// { "base64Signature": "...",
+///   "cert": "...",
+///   "rekorBundle": {
+///     "SignedEntryTimestamp": "...",
+///     "Payload": {
+///       "body": "...",
+///       "integratedTime": <int>,
+///       "logIndex": <int>,
+///       "logID": "..."
+///     }
+///   } }
+/// ```
+///
+/// Used by the `cosign-subprocess` invoker and by the cosign-bundle
+/// parser unit tests below. The sigstore-rs invoker emits a
+/// **different** bundle shape (sigstore protobuf bundle v0.3) and
+/// uses its own extractor in
+/// `crate::core::sigstore_invoker::extract_sigstore_bundle_log_index`.
+///
+/// Gated on `cosign-subprocess` for the production caller plus
+/// `cfg(test)` so the unit tests below can exercise it under any
+/// feature configuration.
+#[cfg(any(feature = "cosign-subprocess", test))]
+pub(crate) fn extract_cosign_legacy_log_index(bundle_bytes: &[u8]) -> Option<u64> {
+    let v: serde_json::Value = serde_json::from_slice(bundle_bytes).ok()?;
+    let payload = v.get("rekorBundle")?.get("Payload")?;
+    payload.get("logIndex").and_then(serde_json::Value::as_u64)
+}
+
+// ─── Stub for tests ────────────────────────────────────────────────────────
 
 /// Test `CosignInvoker` — returns a scripted outcome.
 ///
@@ -220,6 +348,11 @@ impl CosignInvoker for RealCosignInvoker {
 /// right arguments reached the invoker. `outcome` is what the stub
 /// returns. Stored under a `Mutex` so the trait can stay
 /// `Send + Sync` while tests still observe state.
+///
+/// This stub is unconditional — it does **not** depend on which
+/// production feature flag is active. Integration tests in
+/// `attest/tests/` use it to script all four `CosignOutcome`
+/// variants without ever touching the network or PATH.
 pub struct StubCosignInvoker {
     outcome: std::sync::Mutex<CosignOutcome>,
     last_invocation: std::sync::Mutex<Option<CosignInvocation>>,
@@ -246,6 +379,8 @@ impl CosignInvoker for StubCosignInvoker {
         self.outcome.lock().expect("stub mutex").clone()
     }
 }
+
+// ─── Orchestration ─────────────────────────────────────────────────────────
 
 /// Sign `manifest_digest` per `sign_cfg` using `invoker`, store the
 /// resulting bundle in `cas`, and return a `Signature`.
@@ -294,65 +429,6 @@ pub fn sign_with(
     }
 }
 
-/// Walk `PATH` looking for an executable named `cosign` (or
-/// `cosign.exe` on Windows). Returns `false` if the env var is
-/// unset, the directories don't exist, or no executable matches.
-fn cosign_on_path() -> bool {
-    let exe_names: &[&str] = if cfg!(windows) {
-        &["cosign.exe", "cosign"]
-    } else {
-        &["cosign"]
-    };
-
-    let path_var = match std::env::var_os("PATH") {
-        Some(p) => p,
-        None => return false,
-    };
-
-    for dir in std::env::split_paths(&path_var) {
-        for name in exe_names {
-            let candidate = dir.join(name);
-            if candidate.is_file() {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-fn write_payload_tempfile(content: String) -> std::io::Result<PathBuf> {
-    let mut path = std::env::temp_dir();
-    path.push(format!(
-        "justoci-cosign-payload-{}-{}.txt",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0)
-    ));
-    std::fs::write(&path, content)?;
-    Ok(path)
-}
-
-fn extract_rekor_log_index(bundle_bytes: &[u8]) -> Option<u64> {
-    // Cosign bundle shape (v0.x):
-    //   { "base64Signature": "...",
-    //     "cert": "...",
-    //     "rekorBundle": {
-    //       "SignedEntryTimestamp": "...",
-    //       "Payload": {
-    //         "body": "...",
-    //         "integratedTime": <int>,
-    //         "logIndex": <int>,
-    //         "logID": "..."
-    //       }
-    //     }
-    //   }
-    let v: Value = serde_json::from_slice(bundle_bytes).ok()?;
-    let payload = v.get("rekorBundle")?.get("Payload")?;
-    payload.get("logIndex").and_then(Value::as_u64)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -363,10 +439,11 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_rekor_log_index_returns_value_when_present() {
+    fn test_extract_cosign_legacy_log_index_returns_value_when_present() {
         // Catches: a parser change that drops `logIndex` from the
         // bundle would cause every "signed" artifact to surface as
         // SignNotRecorded — silently failing the coupling check.
+        // Specific to the legacy cosign-subprocess bundle shape.
         let bundle = r#"{
             "base64Signature": "AAA",
             "rekorBundle": {
@@ -376,25 +453,28 @@ mod tests {
                 }
             }
         }"#;
-        assert_eq!(extract_rekor_log_index(bundle.as_bytes()), Some(12345));
+        assert_eq!(
+            extract_cosign_legacy_log_index(bundle.as_bytes()),
+            Some(12345)
+        );
     }
 
     #[test]
-    fn test_extract_rekor_log_index_returns_none_when_rekor_block_missing() {
+    fn test_extract_cosign_legacy_log_index_returns_none_when_rekor_block_missing() {
         // Catches: a bundle that signed without --tlog-upload would
         // have no rekorBundle. We must surface this as None so
         // sign_with returns SignNotRecorded, not a half-signed state.
         let bundle = r#"{ "base64Signature": "AAA", "cert": "..." }"#;
-        assert_eq!(extract_rekor_log_index(bundle.as_bytes()), None);
+        assert_eq!(extract_cosign_legacy_log_index(bundle.as_bytes()), None);
     }
 
     #[test]
-    fn test_extract_rekor_log_index_returns_none_for_malformed_json() {
+    fn test_extract_cosign_legacy_log_index_returns_none_for_malformed_json() {
         // Catches: a corrupt cosign bundle must not panic the
         // attestation pipeline — it must surface as None and bubble
         // up to SignNotRecorded with a clear reason.
         let bundle = b"not json at all";
-        assert_eq!(extract_rekor_log_index(bundle), None);
+        assert_eq!(extract_cosign_legacy_log_index(bundle), None);
     }
 
     #[test]

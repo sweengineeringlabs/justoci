@@ -10,12 +10,15 @@
 //!
 //! Two flavours:
 //!
-//! - `attest()` — production entry, uses `RealCosignInvoker` (which
-//!   spawns the `cosign` subprocess).
-//! - `attest_with_invoker()` — test entry, lets callers supply a
+//! - `attest()` — production entry. The concrete `CosignInvoker`
+//!   it constructs depends on which Cargo feature is active:
+//!   - `sigstore-rs` (default): `SigstoreInvoker` (linked-in SDK).
+//!   - `cosign-subprocess`: `RealCosignInvoker` (spawns the
+//!     `cosign` binary).
+//! - `attest_with_invoker()` — test entry. Lets callers supply a
 //!   `StubCosignInvoker` to script signing outcomes deterministically.
 //!   Tests use this to exercise the Rekor-coupling failure mode
-//!   (`SignNotRecorded`) without needing cosign installed.
+//!   (`SignNotRecorded`) without needing a real Sigstore identity.
 
 use cas::Cas;
 use spec::{AttestationConfig, SbomFormat, SignKind};
@@ -23,26 +26,39 @@ use spec::{AttestationConfig, SbomFormat, SignKind};
 use crate::api::attestation::AttestationOutputs;
 use crate::api::built_artifact::BuiltArtifact;
 use crate::api::error::AttestError;
-use crate::core::cosign::{sign_with, CosignInvoker, RealCosignInvoker};
+use crate::core::cosign::{sign_with, CosignInvoker};
 use crate::core::sbom_cyclonedx::emit_cyclonedx;
 use crate::core::sbom_spdx::emit_spdx;
 use crate::core::slsa::emit_slsa;
 
-/// Run the full attestation pipeline using the production cosign
-/// invoker (subprocess). See module docs for semantics.
+/// Run the full attestation pipeline using the production signer.
+///
+/// Which signer that is depends on the `[features]` selection at
+/// build time. See module docs for semantics.
 pub fn attest(
     built: &BuiltArtifact,
     attestation: &AttestationConfig,
     cas: &dyn Cas,
 ) -> Result<AttestationOutputs, AttestError> {
-    let invoker = RealCosignInvoker::new();
-    attest_with_invoker(built, attestation, cas, &invoker)
+    // Compile-time pick of the production invoker. When both
+    // features are active (e.g. `cargo test --all-features` in
+    // dev), we prefer sigstore-rs because that's the documented
+    // production path; `cosign-subprocess` is the explicit escape
+    // hatch. The `core::mod` `compile_error!` ensures at least one
+    // feature is on; we don't repeat that guard here.
+    #[cfg(feature = "sigstore-rs")]
+    let invoker: Box<dyn CosignInvoker> =
+        Box::new(crate::core::sigstore_invoker::SigstoreInvoker::new());
+    #[cfg(all(not(feature = "sigstore-rs"), feature = "cosign-subprocess"))]
+    let invoker: Box<dyn CosignInvoker> = Box::new(crate::core::cosign::RealCosignInvoker::new());
+
+    attest_with_invoker(built, attestation, cas, invoker.as_ref())
 }
 
 /// Same as `attest`, but the cosign invoker is injected. Used by
 /// integration tests to script signing outcomes; can also be used
-/// in production to swap a future `sigstore-rs` invoker in without
-/// changing the public API.
+/// in production to swap a custom invoker (e.g. a future BYO-key
+/// signer) without changing the public API.
 pub fn attest_with_invoker(
     built: &BuiltArtifact,
     attestation: &AttestationConfig,

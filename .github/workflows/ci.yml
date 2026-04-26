@@ -51,10 +51,11 @@ jobs:
           workspaces: justoci -> justoci/target
 
       - name: Install cosign
-        # Required for the attest crate's PATH-probe test
-        # (`test_cosign_not_installed_when_path_lacks_binary` runs
-        # ignored-by-default; we run it here with cosign present
-        # to confirm the production happy path actually finds it).
+        # Required for the attest crate's `cosign-subprocess`
+        # fallback PATH-probe test (gated #[ignore]; only meaningful
+        # when the fallback feature is on AND cosign is installed).
+        # Default builds run sigstore-rs and don't need cosign on
+        # PATH, but the fallback-feature CI job below does.
         uses: sigstore/cosign-installer@v3
         with:
           cosign-release: v2.4.0
@@ -67,16 +68,60 @@ jobs:
         run: cargo check --workspace --all-targets
         working-directory: justoci
 
-      - name: cargo test
+      - name: cargo test (default features — sigstore-rs production path)
         run: cargo test --workspace
         working-directory: justoci
 
-      - name: cargo test (cosign-installed PATH probe)
-        # The attest crate marks one test #[ignore] because it
-        # mutates PATH and must run with --test-threads=1. With
-        # cosign actually installed in CI, run it explicitly so
-        # the production cosign-on-PATH detection is exercised.
-        run: cargo test --workspace -- --ignored --test-threads=1
+  test-cosign-subprocess-fallback:
+    # Verifies the legacy cosign-subprocess fallback still
+    # compiles and tests under the opt-in feature combo. Issue
+    # #13 swapped the default production signer to sigstore-rs;
+    # the cosign subprocess path is kept behind
+    # `--features cosign-subprocess` for environments where the
+    # SDK dep tree is unwelcome. We run the attest crate's tests
+    # in both feature configurations to prove the trait surface
+    # (CosignInvoker / CosignOutcome) is bit-for-bit
+    # behaviour-preserving across the two implementations.
+    name: cargo test (cosign-subprocess fallback)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout justoci
+        uses: actions/checkout@v4
+        with:
+          path: justoci
+
+      - name: Checkout justcas (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: sweengineeringlabs/justcas
+          path: justcas
+          token: ${{ secrets.JUSTCAS_PAT }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: justoci -> justoci/target
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: v2.4.0
+
+      - name: cargo check (cosign-subprocess only)
+        run: cargo check -p swe_justoci_attest --no-default-features --features cosign-subprocess --all-targets
+        working-directory: justoci
+
+      - name: cargo test (cosign-subprocess only)
+        run: cargo test -p swe_justoci_attest --no-default-features --features cosign-subprocess
+        working-directory: justoci
+
+      - name: cargo test (cosign-installed PATH probe under fallback)
+        # The PATH-probe `#[ignore]` test only exists under the
+        # cosign-subprocess feature. Run it explicitly with cosign
+        # installed so the production cosign-on-PATH detection
+        # is exercised.
+        run: cargo test -p swe_justoci_attest --no-default-features --features cosign-subprocess -- --ignored --test-threads=1
         working-directory: justoci
 
   clippy:
