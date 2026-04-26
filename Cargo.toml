@@ -9,6 +9,18 @@ members = [
     "cli",
 ]
 
+# Single source of truth for MSRV across the workspace. Each crate's
+# `[package]` section uses `rust-version.workspace = true` so updates
+# happen once here, not in six places. Pinned to 1.86 because the
+# active dep graph already requires it: `reqwest -> url -> idna ->
+# icu_collections` declares `rust-version = "1.86"` (icu_collections
+# 2.x family), and `clap_builder` requires 1.85. Going lower than 1.86
+# is not achievable today without dropping `reqwest` (used by
+# `oci-publish` and `cli`) or downgrading `idna`/`icu_*`. CI verifies
+# the pin holds with a `cargo check` job pinned to this toolchain.
+[workspace.package]
+rust-version = "1.86"
+
 [workspace.dependencies]
 # ── Internal sibling crates ────────────────────────────────────────────────
 spec        = { path = "spec",    package = "swe_justoci_spec" }

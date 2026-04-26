@@ -55,8 +55,14 @@ cross-repo checkout step. The error is loud and obvious:
 
 ## Required toolchain
 
-- **Rust stable** (currently 1.94+; MSRV stabilisation is on the
-  roadmap).
+- **Rust stable** (CI tests on `stable`; the workspace MSRV is
+  **1.86**, declared once in the root `Cargo.toml`'s
+  `[workspace.package]` block and inherited by every crate via
+  `rust-version.workspace = true`). The MSRV CI job runs `cargo
+  check --workspace --all-targets` on `1.86.0` to keep the pin
+  honest. The floor is set by the dep graph — `reqwest -> url ->
+  idna -> icu_collections` declares 1.86 — not by a feature this
+  workspace uses directly.
 - **`cosign`** on PATH for the cosign-on-PATH probe test (CI
   installs it via `sigstore/cosign-installer@v3`; locally,
   `brew install cosign` / `apt install cosign` / etc.).

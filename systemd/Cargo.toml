@@ -6,7 +6,7 @@ description = "oci-systemd — generate systemd `.service` units that boot an `o
 license = "MIT"
 repository = "https://github.com/sweengineeringlabs/vmisolate"
 authors = ["SWE Engineering Labs"]
-rust-version = "1.86"
+rust-version.workspace = true
 
 [package.metadata.struct-engine]
 application_type = "lib"

@@ -5,6 +5,7 @@ edition = "2021"
 description = "Attestation pipeline for justoci — SLSA provenance + CycloneDX/SPDX SBOM + cosign signing emitted as OCI 1.1 referrers."
 license = "MIT"
 repository = "https://github.com/sweengineeringlabs/justoci"
+rust-version.workspace = true
 
 [lib]
 name = "attest"

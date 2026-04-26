@@ -6,7 +6,7 @@ description = "oci-build — assemble an OCI Image Spec v1.1 layout from a justo
 license = "MIT"
 repository = "https://github.com/sweengineeringlabs/justoci"
 authors = ["SWE Engineering Labs"]
-rust-version = "1.86"
+rust-version.workspace = true
 
 [package.metadata.struct-engine]
 application_type = "lib"

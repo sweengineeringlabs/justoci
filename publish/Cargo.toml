@@ -6,7 +6,7 @@ description = "justoci publish — push a built OCI image directory to a sink: H
 license = "MIT"
 repository = "https://github.com/sweengineeringlabs/justoci"
 authors = ["SWE Engineering Labs"]
-rust-version = "1.86"
+rust-version.workspace = true
 
 [package.metadata.struct-engine]
 application_type = "lib"

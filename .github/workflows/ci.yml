@@ -117,3 +117,39 @@ jobs:
           components: rustfmt
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
+
+  msrv:
+    # Verifies the workspace still compiles on the MSRV declared in
+    # the root Cargo.toml's `[workspace.package]` block. Runs `cargo
+    # check` (not `cargo test`) — the contract is "the production
+    # source builds on MSRV", not "test deps build on MSRV". Test
+    # deps (httpmock, assert_cmd, etc.) are free to require newer
+    # toolchains; CI's `test` job covers that on stable.
+    #
+    # If you bump the workspace MSRV, update the toolchain version
+    # below to match. Keeping the two in sync is the whole point of
+    # this job.
+    name: cargo check (MSRV 1.86)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout justoci
+        uses: actions/checkout@v4
+        with:
+          path: justoci
+
+      - name: Checkout justcas (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: sweengineeringlabs/justcas
+          path: justcas
+          token: ${{ secrets.JUSTCAS_PAT }}
+
+      - uses: dtolnay/rust-toolchain@1.86.0
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: justoci -> justoci/target
+
+      - name: cargo check
+        run: cargo check --workspace --all-targets
+        working-directory: justoci

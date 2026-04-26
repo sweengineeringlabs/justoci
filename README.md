@@ -136,6 +136,9 @@ cargo build --workspace
 cargo test  --workspace
 ```
 
+Minimum supported Rust version: **1.86**. CI runs `cargo check
+--workspace --all-targets` on the MSRV toolchain on every push.
+
 ## Developing locally
 
 justoci's `Cargo.toml` has a path-dep on the sibling
