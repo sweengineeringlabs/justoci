@@ -64,7 +64,6 @@ pipelines route on exit code, not stderr parsing.
 | `attest`  | `swe_justoci_attest`          | SLSA v1 provenance + CycloneDX/SPDX SBOM + cosign-with-Rekor. All as OCI referrers.  |
 | `publish` | `swe_justoci_oci_publish`     | HTTP sink + OCI Distribution v2 sink. HEAD-then-PUT idempotence, manifest-last commit. |
 | `cli`     | `swe_justoci_oci_cli`         | `ocimage` operator CLI. Five subcommands, typed exit codes.                          |
-| `systemd` | `swe_justoci_oci_systemd`     | Generate systemd `.service` units that boot a built image. (Will move out — xkvm-specific.) |
 
 External: `cas` lives at the [`justcas`](../justcas) sibling repo
 (content-addressed-storage primitive — sha256 digests, atomic put,

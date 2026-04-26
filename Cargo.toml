@@ -5,7 +5,6 @@ members = [
     "attest",
     "build",
     "publish",
-    "systemd",
     "cli",
 ]
 
@@ -27,7 +26,6 @@ spec        = { path = "spec",    package = "swe_justoci_spec" }
 attest      = { path = "attest",  package = "swe_justoci_attest" }
 oci-build   = { path = "build",   package = "swe_justoci_oci_build" }
 oci-publish = { path = "publish", package = "swe_justoci_oci_publish" }
-oci-systemd = { path = "systemd", package = "swe_justoci_oci_systemd" }
 
 # ── Cross-repo sibling — swelabs/virtualization/justcas ──────────────────
 # Content-addressed storage primitive. Used by `spec` for the canonical

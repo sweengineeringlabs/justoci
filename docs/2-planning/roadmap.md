@@ -18,6 +18,7 @@ workspace.
 | v0.2 | `ocimage verify <registry-ref>` (pull-then-verify) | ✓ | `31a7c89` |
 | CI | GitHub Actions for both repos | ✓ | `b47085e` / `44f4ad9` |
 | Docs | SDLC-phase documentation tree | ✓ | (this commit) |
+| Refactor | Move `oci-systemd` to vmisolate (xkvm-specific) | ✓ | (issue #5) |
 
 ## v0.2 — in flight / next
 
@@ -66,13 +67,6 @@ workspace.
   P3 worker E's "surprises" report.
 
 ## Open questions
-
-- **Should `oci-systemd` move out of justoci?** The crate is
-  xkvm-specific (it generates `xkvm boot` `.service` units) and
-  doesn't belong in a generic OCI artifact pipeline. Candidate
-  destination: vmisolate. Not yet moved because it's a small
-  blast radius and waiting for the `[[files]]` overlay to settle
-  the cross-repo dependency picture.
 
 - **crates.io publication.** Today both repos use git path-deps.
   Publishing to crates.io makes adoption easier for outside

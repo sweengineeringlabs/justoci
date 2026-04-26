@@ -92,8 +92,6 @@ Full list at [`3-design/spec-v0.md`](./3-design/spec-v0.md)
 - `attest` — SLSA + SBOM + cosign+Rekor.
 - `publish` — HTTP + OCI Distribution sinks.
 - `cli` — `ocimage` operator CLI (5 subcommands).
-- `systemd` — xkvm-specific `.service` generator (will move out;
-  not part of the generic product).
 
 External: [`justcas`](https://github.com/sweengineeringlabs/justcas)
 sibling repo, content-addressed-storage primitive.
