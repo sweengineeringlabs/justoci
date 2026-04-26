@@ -55,7 +55,7 @@ confirmed-present).
 
 **Exit code.** `4` PublishError.
 
-## `ocimage verify <ref> [--policy <file>] [--auth ...]`
+## `ocimage verify <ref> [--policy <file>] [--auth ...] [--require-referrers]`
 
 **Functional requirement.** Given an artifact reference (local
 OCI layout path or `<host>/<repo>:<tag>`), validate its SLSA +
@@ -91,8 +91,26 @@ formats = ["cyclonedx", "spdx"]   # at least one must be present
 5. For each SBOM referrer: validate JSON shape.
 6. If `--policy`: gate each pillar against the policy.
 
+**`--require-referrers` (strict OCI 1.1 mode).**
+
+Default behaviour: a 404 from
+`/v2/<repo>/referrers/<digest>` on the registry-pull path is
+silently treated as "no referrers" so pre-OCI-1.1 registries don't
+error out. The verdict table reports the missing pillars; final
+exit is governed by `--policy` (or 0 if absent).
+
+With `--require-referrers`: a 404 on `/referrers/` escalates to
+`RegistryPullError::ReferrersNotSupported` and the CLI exits 5.
+Set this when the operator refuses to deploy artifacts from a
+registry that cannot host attestations.
+
+The flag is a no-op for local OCI Image Layout paths: referrers
+on a local layout come from `index.json` directly, so there is
+no `/referrers/` endpoint that could 404. The CLI help text
+documents the no-op explicitly.
+
 **Exit code.** `5` VerifyError (verify pillar failed or policy
-violation).
+violation, or strict-mode `ReferrersNotSupported`).
 
 ## `ocimage sbom <spec-or-ref> [-o <file>] [--format <cyclonedx|spdx>]`
 

@@ -107,6 +107,25 @@ const HEADER_DOCKER_CONTENT_DIGEST: &str = "Docker-Content-Digest";
 /// ignored.
 const ENV_ALLOW_INSECURE: &str = "OCIMAGE_ALLOW_INSECURE";
 
+/// Knobs that govern the pull pipeline beyond the bare reference +
+/// auth. Defaults match the historic behaviour the v0.2 surface
+/// shipped with — adding a field here is non-breaking as long as
+/// the default keeps the legacy semantics.
+#[derive(Debug, Clone, Default)]
+pub struct PullOptions {
+    /// Strict mode for the `/v2/<repo>/referrers/<digest>` endpoint.
+    ///
+    /// - `false` (default): a 404 from the referrers endpoint is
+    ///   silently treated as "no referrers" so pre-OCI-1.1
+    ///   registries don't error out.
+    /// - `true`: a 404 escalates to
+    ///   [`RegistryPullError::ReferrersNotSupported`]. Operators
+    ///   set this via `ocimage verify --require-referrers` when
+    ///   they refuse to deploy artifacts from registries that
+    ///   don't implement the OCI 1.1 referrers API.
+    pub require_referrers: bool,
+}
+
 /// Pull `ref_str` into `dest`, producing a complete OCI Image
 /// Layout. `dest` MUST exist and be writable; the function does
 /// not create it (the caller — typically a `tempfile::TempDir` —
@@ -125,26 +144,39 @@ pub fn pull_into_image_dir(
     auth: &RegistryAuth,
     dest: &Path,
 ) -> Result<(), RegistryPullError> {
+    pull_into_image_dir_with_options(ref_str, auth, dest, &PullOptions::default())
+}
+
+/// Options-aware variant of [`pull_into_image_dir`]. The default
+/// entry point is preserved as the zero-options call so existing
+/// callers keep their semantics.
+pub fn pull_into_image_dir_with_options(
+    ref_str: &str,
+    auth: &RegistryAuth,
+    dest: &Path,
+    opts: &PullOptions,
+) -> Result<(), RegistryPullError> {
     let parsed = parse_registry_ref(ref_str)?;
-    pull_parsed_into_image_dir(&parsed, auth, dest)
+    let ctx = WireContext::new_authenticated(&parsed, auth)?;
+    execute_pull(&ctx, &parsed, dest, opts)
 }
 
 /// Anonymous variant — equivalent to `pull_into_image_dir` with
 /// auth resolution skipped. Useful for public read-only registries
 /// where `RegistryAuth::FromEnv` would error on missing creds.
 pub fn pull_anonymous_into_image_dir(ref_str: &str, dest: &Path) -> Result<(), RegistryPullError> {
-    let parsed = parse_registry_ref(ref_str)?;
-    let ctx = WireContext::new_anonymous(&parsed)?;
-    execute_pull(&ctx, &parsed, dest)
+    pull_anonymous_into_image_dir_with_options(ref_str, dest, &PullOptions::default())
 }
 
-fn pull_parsed_into_image_dir(
-    parsed: &RegistryRef,
-    auth: &RegistryAuth,
+/// Options-aware variant of [`pull_anonymous_into_image_dir`].
+pub fn pull_anonymous_into_image_dir_with_options(
+    ref_str: &str,
     dest: &Path,
+    opts: &PullOptions,
 ) -> Result<(), RegistryPullError> {
-    let ctx = WireContext::new_authenticated(parsed, auth)?;
-    execute_pull(&ctx, parsed, dest)
+    let parsed = parse_registry_ref(ref_str)?;
+    let ctx = WireContext::new_anonymous(&parsed)?;
+    execute_pull(&ctx, &parsed, dest, opts)
 }
 
 /// HTTP coordinates threaded through every wire call.
@@ -220,6 +252,7 @@ fn execute_pull(
     ctx: &WireContext,
     parsed: &RegistryRef,
     dest: &Path,
+    opts: &PullOptions,
 ) -> Result<(), RegistryPullError> {
     if !dest.is_dir() {
         return Err(RegistryPullError::Io {
@@ -283,8 +316,11 @@ fn execute_pull(
         })?;
     }
 
-    // 4. Pull referrers.
-    let referrer_descriptors = fetch_referrers(ctx, &primary_manifest_digest)?;
+    // 4. Pull referrers. Strict-mode propagation: when the operator
+    //    set `--require-referrers`, a 404 here surfaces as
+    //    `ReferrersNotSupported` rather than silently degrading to
+    //    "no referrers found".
+    let referrer_descriptors = fetch_referrers(ctx, parsed, &primary_manifest_digest, opts)?;
 
     // 5. For each referrer, pull its manifest + config + layers.
     let mut seen_blobs: HashSet<String> = HashSet::new();
@@ -411,13 +447,27 @@ fn fetch_manifest(
 /// Returns the parsed list of referrer manifest descriptors. An
 /// empty list (no attestations) is OK.
 ///
-/// If the registry doesn't implement the referrers API at all
-/// (404 on the endpoint), v0.2 treats that as "no referrers" and
-/// continues. (Future hardening: a `--require-referrers` CLI flag
-/// would escalate this to an error.)
+/// **404 handling.** Per the OCI Distribution v1.1 spec, a registry
+/// that implements the referrers API returns 200 with an empty
+/// `manifests` array when an artifact has no attestations.
+/// Pre-OCI-1.1 registries (and proxies that haven't been upgraded)
+/// instead return 404 on the endpoint URL itself. Two policies for
+/// the 404 case, governed by `opts.require_referrers`:
+///
+/// - `false` (default): 404 is silently treated as "no referrers".
+///   This keeps `ocimage verify` working against legacy registries
+///   so the operator gets a soft "no attestations found" verdict
+///   rather than a hard pull failure.
+/// - `true`: 404 surfaces as
+///   [`RegistryPullError::ReferrersNotSupported`]. The operator
+///   asked for strict mode via `--require-referrers` because they
+///   refuse to deploy from a registry that can't host attestations
+///   in the first place.
 fn fetch_referrers(
     ctx: &WireContext,
+    parsed: &RegistryRef,
     manifest_digest: &str,
+    opts: &PullOptions,
 ) -> Result<Vec<OciDescriptorOnWire>, RegistryPullError> {
     let url = format!(
         "{}/v2/{}/referrers/{}",
@@ -437,8 +487,19 @@ fn fetch_referrers(
     })?;
     let status = resp.status();
     if status == StatusCode::NOT_FOUND {
-        // Pre-OCI-1.1 registry, or no attestations. Either way:
-        // treat as empty.
+        if opts.require_referrers {
+            // Strict mode: the operator opted into refusing
+            // pre-OCI-1.1 registries. Surface a typed error so the
+            // CLI exits 5 instead of silently shipping "no
+            // attestations found" on an artifact whose registry
+            // simply can't carry them.
+            return Err(RegistryPullError::ReferrersNotSupported {
+                registry: parsed.host.clone(),
+                repository: parsed.repository.clone(),
+            });
+        }
+        // Default mode: pre-OCI-1.1 registry, or no attestations.
+        // Either way: treat as empty.
         return Ok(Vec::new());
     }
     if !status.is_success() {

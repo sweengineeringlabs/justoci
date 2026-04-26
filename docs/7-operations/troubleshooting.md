@@ -253,6 +253,34 @@ The registry returned bytes that don't match the digest claimed
 by the manifest. Either tampering or registry corruption. Refuse
 to deploy and report to your registry's operator.
 
+### `ReferrersNotSupported` (strict mode only)
+
+```
+Error: registry ghcr.io does not implement the OCI 1.1 referrers
+       API for repository acme/app (404 on /v2/<repo>/referrers/<digest>);
+       --require-referrers refuses to deploy from such registries
+```
+
+Surfaced ONLY when the operator passed `--require-referrers` to
+`ocimage verify`. The flag escalates a 404 on the OCI 1.1
+referrers endpoint from a soft "no referrers found" to a hard
+exit-5 failure.
+
+Two recoveries:
+
+1. **Drop `--require-referrers`.** The default behaviour is to
+   silently tolerate the 404 — verify will continue, report the
+   pillars as `missing`, and exit 0 (or whatever `--policy` says).
+   Use this if the registry genuinely doesn't host attestations
+   and that's acceptable for the consumer.
+2. **Migrate the artifact to an OCI-1.1 registry.** Re-publish
+   the artifact (and its referrers) to a registry that implements
+   the referrers API: ghcr.io, GitLab Registry 16+, Docker Hub
+   (modern), Harbor 2.8+, zot, distribution/distribution v3+.
+
+The flag is a no-op for local OCI Image Layout paths — if you
+hit this error, the ref must be a registry reference.
+
 ## Where to file an issue
 
 If you hit exit code 64 (catastrophic) or any unexpected

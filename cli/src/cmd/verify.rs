@@ -44,7 +44,9 @@ use std::path::Path;
 use crate::cmd::publish::AuthMode;
 use crate::error::CliError;
 use crate::policy::Policy;
-use crate::registry::{pull_anonymous_into_image_dir, pull_into_image_dir};
+use crate::registry::{
+    pull_anonymous_into_image_dir_with_options, pull_into_image_dir_with_options, PullOptions,
+};
 use crate::verify_engine::{verify, RealCosignVerifyInvoker, VerifyReport};
 
 /// Auth selector for `ocimage verify <registry-ref>`. Mirrors
@@ -60,6 +62,30 @@ pub enum VerifyAuthMode {
     Authenticated(AuthMode),
 }
 
+/// Knobs that govern verify beyond the bare reference + auth.
+/// Defaults match the historic v0.2 behaviour so adding a field
+/// here is non-breaking for callers that construct via `..default()`.
+#[derive(Debug, Clone, Default)]
+pub struct VerifyOptions {
+    /// Strict mode for the OCI 1.1 referrers API.
+    ///
+    /// On the **registry-ref** branch, when `true`, a 404 from
+    /// `/v2/<repo>/referrers/<digest>` escalates to a typed
+    /// [`crate::registry::RegistryPullError::ReferrersNotSupported`]
+    /// (exit 5) rather than silently degrading to "no referrers
+    /// found". Operators set this when they refuse to deploy
+    /// artifacts from registries that can't host OCI 1.1
+    /// attestations.
+    ///
+    /// On the **local-path** branch, this flag is a no-op:
+    /// referrers come from the on-disk `index.json` directly, not
+    /// from a registry endpoint, so there is no 404 to escalate.
+    /// The flag is documented as a no-op for local paths in the
+    /// CLI help so an operator who mixes local and remote refs
+    /// in CI scripts isn't surprised.
+    pub require_referrers: bool,
+}
+
 /// Run the verify subcommand.
 ///
 /// `<reference>` is treated as a local path FIRST: if the path
@@ -71,10 +97,26 @@ pub enum VerifyAuthMode {
 /// `auth` is consulted only on the registry-ref branch. Local
 /// paths ignore it (auth has no meaning for a layout already on
 /// disk).
+///
+/// This entry point preserves the v0.2 surface; the
+/// [`VerifyOptions`] defaults match the historic semantics. New
+/// callers that want strict-mode flags should call
+/// [`run_with_options`].
 pub fn run(
     reference: &str,
     policy_path: Option<&Path>,
     auth: VerifyAuthMode,
+) -> Result<VerifyReport, CliError> {
+    run_with_options(reference, policy_path, auth, &VerifyOptions::default())
+}
+
+/// Options-aware variant of [`run`]. Threads [`VerifyOptions`]
+/// (today: `require_referrers`) into the registry-pull path.
+pub fn run_with_options(
+    reference: &str,
+    policy_path: Option<&Path>,
+    auth: VerifyAuthMode,
+    opts: &VerifyOptions,
 ) -> Result<VerifyReport, CliError> {
     let policy: Option<Policy> = match policy_path {
         Some(p) => Some(Policy::load(p)?),
@@ -86,6 +128,10 @@ pub fn run(
     // requires a dir — `ImageDir::open` errors with a precise
     // message if the path is a file rather than a layout dir,
     // which is the right diagnostic for the operator.
+    //
+    // `require_referrers` is documented as a no-op on this branch:
+    // for local layouts, referrers are read from `index.json`
+    // directly, so there's no 404 to escalate.
     let candidate = Path::new(reference);
     if candidate.exists() {
         return run_local(candidate, policy.as_ref());
@@ -97,7 +143,7 @@ pub fn run(
         path: "<tempdir for registry pull>".into(),
         source,
     })?;
-    pull_for_verify(reference, &auth, tempdir.path())?;
+    pull_for_verify(reference, &auth, tempdir.path(), opts)?;
     run_local(tempdir.path(), policy.as_ref())
 }
 
@@ -122,14 +168,22 @@ fn run_local(image_dir: &Path, policy: Option<&Policy>) -> Result<VerifyReport, 
     Ok(report)
 }
 
-fn pull_for_verify(reference: &str, auth: &VerifyAuthMode, dest: &Path) -> Result<(), CliError> {
+fn pull_for_verify(
+    reference: &str,
+    auth: &VerifyAuthMode,
+    dest: &Path,
+    opts: &VerifyOptions,
+) -> Result<(), CliError> {
+    let pull_opts = PullOptions {
+        require_referrers: opts.require_referrers,
+    };
     match auth {
         VerifyAuthMode::Anonymous => {
-            pull_anonymous_into_image_dir(reference, dest)?;
+            pull_anonymous_into_image_dir_with_options(reference, dest, &pull_opts)?;
         }
         VerifyAuthMode::Authenticated(mode) => {
             let registry_auth = mode.clone().into_registry_auth();
-            pull_into_image_dir(reference, &registry_auth, dest)?;
+            pull_into_image_dir_with_options(reference, &registry_auth, dest, &pull_opts)?;
         }
     }
     Ok(())

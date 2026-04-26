@@ -15,7 +15,7 @@ use tracing_subscriber::EnvFilter;
 
 use swe_justoci_oci_cli::cmd::publish::AuthMode;
 use swe_justoci_oci_cli::cmd::sbom::SbomFormat;
-use swe_justoci_oci_cli::cmd::verify::VerifyAuthMode;
+use swe_justoci_oci_cli::cmd::verify::{VerifyAuthMode, VerifyOptions};
 use swe_justoci_oci_cli::cmd::{build, inspect, publish, sbom, verify};
 use swe_justoci_oci_cli::error::CliError;
 use swe_justoci_oci_cli::verify_engine::PillarVerdict;
@@ -132,6 +132,14 @@ enum Commands {
         /// Bearer token for `--auth bearer`.
         #[arg(long, env = "REGISTRY_TOKEN")]
         registry_token: Option<String>,
+
+        /// Strict mode for the OCI 1.1 referrers API. On registry refs,
+        /// a 404 from `/v2/<repo>/referrers/<digest>` becomes a hard
+        /// error (exit 5) instead of a soft "no referrers" warning.
+        /// No-op on local image-layout paths (referrers come from
+        /// index.json there).
+        #[arg(long)]
+        require_referrers: bool,
     },
 
     /// Emit (from spec) or extract (from image dir) an SBOM.
@@ -248,6 +256,7 @@ fn dispatch(command: Commands) -> Result<(), CliError> {
             registry_username,
             registry_password,
             registry_token,
+            require_referrers,
         } => {
             let verify_auth = parse_verify_auth_mode(
                 no_auth,
@@ -256,7 +265,9 @@ fn dispatch(command: Commands) -> Result<(), CliError> {
                 registry_password,
                 registry_token,
             )?;
-            let report = verify::run(&reference, policy.as_deref(), verify_auth)?;
+            let opts = VerifyOptions { require_referrers };
+            let report =
+                verify::run_with_options(&reference, policy.as_deref(), verify_auth, &opts)?;
             println!("manifest: {}", report.manifest_digest);
             println!(
                 "slsa:      {}  {}",

@@ -26,5 +26,8 @@ pub mod pull;
 pub mod ref_parser;
 
 pub use error::RegistryPullError;
-pub use pull::{pull_anonymous_into_image_dir, pull_into_image_dir};
+pub use pull::{
+    pull_anonymous_into_image_dir, pull_anonymous_into_image_dir_with_options, pull_into_image_dir,
+    pull_into_image_dir_with_options, PullOptions,
+};
 pub use ref_parser::{parse_registry_ref, RefTarget, RegistryRef};

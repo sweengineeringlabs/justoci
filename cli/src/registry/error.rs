@@ -93,6 +93,27 @@ pub enum RegistryPullError {
     /// the specific defect (missing field, wrong type).
     #[error("malformed manifest from registry: {detail}")]
     MalformedManifest { detail: String },
+
+    /// The registry returned 404 on `/v2/<repo>/referrers/<digest>`
+    /// AND the operator requested strict mode (`--require-referrers`).
+    /// Without strict mode, a 404 here is silently treated as "no
+    /// referrers" so pre-OCI-1.1 registries don't error out; with
+    /// strict mode, the operator is saying "I refuse to deploy from
+    /// a registry that doesn't implement the OCI 1.1 referrers API",
+    /// and we honour that as a hard typed error.
+    ///
+    /// `registry` is the host (`ghcr.io`, `localhost:5000`, ...) and
+    /// `repository` is the repo path — together they identify the
+    /// endpoint that lacks support so the operator can audit a fleet.
+    #[error(
+        "registry {registry} does not implement the OCI 1.1 referrers API \
+         for repository {repository} (404 on /v2/<repo>/referrers/<digest>); \
+         --require-referrers refuses to deploy from such registries"
+    )]
+    ReferrersNotSupported {
+        registry: String,
+        repository: String,
+    },
 }
 
 /// Truncate a registry response body to a bounded preview. Returns a
@@ -148,5 +169,30 @@ mod tests {
         assert!(s.contains("sha256:aaa"));
         assert!(s.contains("sha256:bbb"));
         assert!(s.contains("layer[2]"));
+    }
+
+    // Catches: a Display impl for ReferrersNotSupported that drops
+    // either the registry host or the repository — without both,
+    // an operator running --require-referrers across a fleet of
+    // mirrors can't tell which mirror is at fault.
+    #[test]
+    fn test_referrers_not_supported_display_carries_registry_and_repo() {
+        let e = RegistryPullError::ReferrersNotSupported {
+            registry: "old-mirror.example".into(),
+            repository: "team/app".into(),
+        };
+        let s = format!("{e}");
+        assert!(
+            s.contains("old-mirror.example"),
+            "Display must carry the registry host so the operator can identify the failing mirror, got {s:?}",
+        );
+        assert!(
+            s.contains("team/app"),
+            "Display must carry the repository path so the operator can audit per-repo support, got {s:?}",
+        );
+        assert!(
+            s.contains("--require-referrers"),
+            "Display must name the flag that triggered the escalation so the operator knows the recovery path, got {s:?}",
+        );
     }
 }

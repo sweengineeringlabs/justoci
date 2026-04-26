@@ -357,6 +357,7 @@ ocimage verify ghcr.io/acme/app:v1
 ocimage verify ghcr.io/acme/app:v1 --auth bearer --registry-token $GH_PAT
 ocimage verify localhost:5000/acme/app:0.1.0 --no-auth
 ocimage verify registry.io/acme/app@sha256:<hex> --policy policy.toml
+ocimage verify ghcr.io/acme/app:v1 --require-referrers
 ```
 
 `--auth env` (default) reads `REGISTRY_TOKEN`, then
@@ -365,6 +366,37 @@ explicit-anonymous shorthand. The 401-then-`WWW-Authenticate`
 bearer-token dance (OCI Distribution §3.4) is handled
 transparently — public repos on Docker Hub / GHCR work without
 operator-supplied credentials.
+
+#### `--require-referrers` (strict OCI 1.1 mode)
+
+The OCI Distribution v1.1 referrers endpoint
+(`/v2/<repo>/referrers/<digest>`) is the wire-level mechanism that
+makes attestations discoverable. A registry that implements it
+returns 200 with an empty `manifests` array when the artifact has
+no attestations; a registry that does not implement it returns 404
+on the endpoint URL.
+
+Default behaviour: a 404 on `/referrers/` is silently treated as
+"no referrers". This keeps `ocimage verify` working against
+pre-OCI-1.1 registries (legacy mirrors, older Harbor versions,
+third-party proxies that haven't been upgraded). The verdict
+table reports the SLSA / SBOM / signature pillars as `missing`,
+and exit code is governed by the `--policy` gate (or 0 if no
+policy was supplied).
+
+Strict mode (`--require-referrers`): a 404 on `/referrers/`
+escalates to a typed `RegistryPullError::ReferrersNotSupported`
+and the CLI exits 5. This is for consumers who refuse to deploy
+artifacts pulled from a registry that fundamentally cannot host
+attestations — operating an SBOM/SLSA-mandatory deploy pipeline
+from a non-OCI-1.1 registry would be a silent compliance gap
+otherwise.
+
+The flag is a no-op on local OCI Image Layout paths: there's no
+`/referrers/` endpoint to 404 on, because referrers are read from
+`index.json` directly. The flag is documented as a no-op for
+local paths in the CLI help so an operator who mixes local and
+remote refs in one CI script isn't surprised.
 
 Out of scope for v0.2 of registry-pull verify (tracked for later):
 
