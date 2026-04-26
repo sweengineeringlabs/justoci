@@ -37,7 +37,9 @@ ratio_small         = 0.1                # repeating binary; ECMA-262 emits "0.1
 ratio_round         = 0.5                # exact in binary; emits "0.5" not "5e-1"
 small_exponent      = 0.001              # ECMA-262 prefers "0.001" over "1e-3"
 large_exponent      = 1e21               # at >= 1e21 ECMA-262 switches to "1e+21"
-fraction_with_zero  = 1.0                # canonical form drops the `.0`? No — JCS
-                                         # keeps it because the source was a float,
-                                         # not an integer (TOML preserves the type).
+fraction_with_zero  = 1.0                # ECMA-262 drops the `.0` for integer-
+                                         # valued doubles → `"fraction_with_zero":1`
+                                         # in the canonical JSON. A re-impl that
+                                         # preserves `"1.0"` (e.g. via `%.1f`) will
+                                         # mismatch.
 neg_one             = -1
