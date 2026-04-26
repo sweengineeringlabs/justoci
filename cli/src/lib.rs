@@ -24,6 +24,7 @@ pub mod cmd;
 pub mod error;
 pub mod policy;
 pub mod referrers;
+pub mod registry;
 pub mod verify_engine;
 
 pub use error::CliError;

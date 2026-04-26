@@ -15,6 +15,7 @@ use tracing_subscriber::EnvFilter;
 
 use swe_justoci_oci_cli::cmd::publish::AuthMode;
 use swe_justoci_oci_cli::cmd::sbom::SbomFormat;
+use swe_justoci_oci_cli::cmd::verify::VerifyAuthMode;
 use swe_justoci_oci_cli::cmd::{build, inspect, publish, sbom, verify};
 use swe_justoci_oci_cli::error::CliError;
 use swe_justoci_oci_cli::verify_engine::PillarVerdict;
@@ -83,17 +84,54 @@ enum Commands {
         registry_token: Option<String>,
     },
 
-    /// Verify an OCI image dir's attestation pillars + (optional)
-    /// policy gates. v0 accepts only local OCI image-layout dirs.
+    /// Verify an OCI artifact's attestation pillars + (optional)
+    /// policy gates.
+    ///
+    /// `<reference>` is detected path-first: an existing path on
+    /// disk is verified locally; otherwise it's parsed as a
+    /// registry reference (`host[:port]/repo:tag` or
+    /// `host/repo@sha256:<hex>`) and pulled into a tempdir before
+    /// the same local-verify path runs.
     Verify {
-        /// Path to the OCI image-layout directory.
-        reference: PathBuf,
+        /// Path to a local OCI image-layout dir, OR a registry
+        /// reference (`ghcr.io/acme/img:v1`,
+        /// `localhost:5000/foo:latest`, `registry.io/foo@sha256:…`).
+        reference: String,
 
         /// Optional policy.toml declaring slsa.level / sign /
         /// sbom gates. Without it, verify reports the pillar
         /// states informationally and exits 0.
         #[arg(long)]
         policy: Option<PathBuf>,
+
+        /// Auth mode for registry references. Same shape as
+        /// `ocimage publish`. `env` (default) reads
+        /// REGISTRY_TOKEN, then REGISTRY_USERNAME+REGISTRY_PASSWORD.
+        /// `basic` requires --registry-username +
+        /// --registry-password. `bearer` requires
+        /// --registry-token.
+        ///
+        /// Ignored when `<reference>` is a local path.
+        #[arg(long, default_value = "env")]
+        auth: String,
+
+        /// Explicit anonymous pull. Skips env-var credential
+        /// resolution entirely — the shorthand for "I know this
+        /// registry is public-readable." Ignored on local paths.
+        #[arg(long)]
+        no_auth: bool,
+
+        /// Username for `--auth basic`.
+        #[arg(long, env = "REGISTRY_USERNAME")]
+        registry_username: Option<String>,
+
+        /// Password for `--auth basic`.
+        #[arg(long, env = "REGISTRY_PASSWORD")]
+        registry_password: Option<String>,
+
+        /// Bearer token for `--auth bearer`.
+        #[arg(long, env = "REGISTRY_TOKEN")]
+        registry_token: Option<String>,
     },
 
     /// Emit (from spec) or extract (from image dir) an SBOM.
@@ -208,8 +246,23 @@ fn dispatch(command: Commands) -> Result<(), CliError> {
             println!("bytes:   {}", outcome.bytes_uploaded);
             Ok(())
         }
-        Commands::Verify { reference, policy } => {
-            let report = verify::run(&reference, policy.as_deref())?;
+        Commands::Verify {
+            reference,
+            policy,
+            auth,
+            no_auth,
+            registry_username,
+            registry_password,
+            registry_token,
+        } => {
+            let verify_auth = parse_verify_auth_mode(
+                no_auth,
+                &auth,
+                registry_username,
+                registry_password,
+                registry_token,
+            )?;
+            let report = verify::run(&reference, policy.as_deref(), verify_auth)?;
             println!("manifest: {}", report.manifest_digest);
             println!(
                 "slsa:      {}  {}",
@@ -304,6 +357,33 @@ fn pillar_detail(v: &PillarVerdict) -> &str {
         PillarVerdict::Found { detail } => detail,
         PillarVerdict::Failed { detail } => detail,
     }
+}
+
+/// Parse the verify-side auth surface. `--no-auth` is the
+/// explicit-anonymous override; otherwise the same `--auth env|basic|bearer`
+/// matrix as publish maps to a `VerifyAuthMode::Authenticated`.
+fn parse_verify_auth_mode(
+    no_auth: bool,
+    raw: &str,
+    username: Option<String>,
+    password: Option<String>,
+    token: Option<String>,
+) -> Result<VerifyAuthMode, CliError> {
+    if no_auth {
+        // Explicit anonymous wins over `--auth ...`. We don't
+        // silently accept the conflict — that would surprise an
+        // operator who set both — so we surface a typed error
+        // when both are present and meaningful.
+        let auth_was_set = raw != "env" || username.is_some() || password.is_some() || token.is_some();
+        if auth_was_set {
+            return Err(CliError::Cli {
+                detail: "--no-auth is mutually exclusive with --auth / --registry-* flags".into(),
+            });
+        }
+        return Ok(VerifyAuthMode::Anonymous);
+    }
+    let mode = parse_auth_mode(raw, username, password, token)?;
+    Ok(VerifyAuthMode::Authenticated(mode))
 }
 
 fn parse_auth_mode(

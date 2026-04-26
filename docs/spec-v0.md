@@ -327,13 +327,51 @@ Each example demonstrates a different default-attestation outcome.
 ```
 ocimage build   <spec.toml> [-o <dir>]      # produce artifact + attestations
 ocimage publish <dir> --to <sink>           # push to HTTP / OCI registry
-ocimage verify  <ref>                       # verify SLSA + SBOM + signature
+ocimage verify  <ref> [--auth ...]          # verify SLSA + SBOM + signature
 ocimage sbom    <spec-or-ref> [-o <file>]   # emit/extract SBOM only
 ocimage inspect <spec-or-ref>               # canonical form + spec hash
 ```
 
 Build and publish are decoupled so CI can sign artifacts in a
 hardened environment separate from the build host.
+
+### `ocimage verify <ref>` — local path or registry reference
+
+`<ref>` is detected path-first:
+
+- **Local OCI Image Layout dir.** If the ref names an existing path
+  on disk, verify runs against that layout directly (the v0
+  baseline behaviour).
+- **Registry reference.** If the ref does NOT exist on disk, it's
+  parsed as `host[:port]/repository:tag` (or
+  `host/repository@sha256:<hex>`). The artifact + every attestation
+  referrer is pulled from the registry into a tempdir; the
+  verifier then runs against that tempdir verbatim. Every blob is
+  hashed during streaming and rejected on digest mismatch — a
+  tampered registry can never feed verify a swapped layer.
+
+Auth flags mirror `ocimage publish`:
+
+```
+ocimage verify ghcr.io/acme/app:v1
+ocimage verify ghcr.io/acme/app:v1 --auth bearer --registry-token $GH_PAT
+ocimage verify localhost:5000/acme/app:0.1.0 --no-auth
+ocimage verify registry.io/acme/app@sha256:<hex> --policy policy.toml
+```
+
+`--auth env` (default) reads `REGISTRY_TOKEN`, then
+`REGISTRY_USERNAME` + `REGISTRY_PASSWORD`. `--no-auth` is the
+explicit-anonymous shorthand. The 401-then-`WWW-Authenticate`
+bearer-token dance (OCI Distribution §3.4) is handled
+transparently — public repos on Docker Hub / GHCR work without
+operator-supplied credentials.
+
+Out of scope for v0.2 of registry-pull verify (tracked for later):
+
+- HTTP range requests for resumable layer downloads (per-blob retry
+  is implemented; partial-blob resume is a follow-up).
+- Multi-platform manifest indexes.
+- Parallel layer downloads.
 
 ## Out of scope for v0
 

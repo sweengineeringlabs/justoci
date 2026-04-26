@@ -43,9 +43,25 @@ serde_json         = { workspace = true }
 toml               = { workspace = true }
 thiserror          = { workspace = true }
 sha2               = { workspace = true }
+# Direct OCI Distribution v2 wire calls for `ocimage verify
+# <registry-ref>` — GET /v2/<repo>/manifests/<tag>, GET blobs,
+# GET /v2/<repo>/referrers/<digest>. Same shape the publish crate
+# uses for the push side; we don't share its module because the
+# wire calls are GET-only and have a distinct error / streaming
+# shape (download → hasher → tempdir blob path).
+reqwest          = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "blocking"] }
+tempfile         = "3"
 
 [dev-dependencies]
-tempfile   = "3"
 assert_cmd = "2"
 predicates = "3"
 serde_json = { workspace = true }
+# httpmock fakes the OCI Distribution registry endpoint at the
+# HTTP layer for `ocimage verify <registry-ref>` integration tests.
+# Same dep choice the publish crate uses; lets us assert the exact
+# GET sequence the pull path emits.
+httpmock         = "0.7"
+
+[[test]]
+name = "registry_pull_test"
+path = "tests/registry_pull_test.rs"

@@ -28,6 +28,7 @@
 
 use thiserror::Error;
 
+use crate::registry::RegistryPullError;
 use crate::verify_engine::VerifyError;
 
 /// Top-level CLI error. Implements the spec-doc §7 exit-code table
@@ -62,6 +63,14 @@ pub enum CliError {
     #[error("verify error: {0}")]
     Verify(#[from] VerifyError),
 
+    /// Registry-pull failure on `ocimage verify <registry-ref>`.
+    /// Maps to exit 5 — same class as a verify failure, since the
+    /// pull is the prelude to verify. Distinct variant so a CLI
+    /// log scraper can route on "the artifact wasn't even
+    /// pullable" vs "pulled, structurally invalid".
+    #[error("registry pull error: {0}")]
+    RegistryPull(#[from] RegistryPullError),
+
     /// CLI-local failure that doesn't fit a pipeline class.
     /// Examples: malformed `--to` URI, image dir / spec path
     /// arguments that aren't actual files, IO writing the
@@ -92,7 +101,7 @@ impl CliError {
             CliError::Build(_) => 2,
             CliError::Attest(_) => 3,
             CliError::Publish(_) => 4,
-            CliError::Verify(_) => 5,
+            CliError::Verify(_) | CliError::RegistryPull(_) => 5,
             CliError::Cli { .. } | CliError::CliIo { .. } => 64,
         }
     }
@@ -156,6 +165,22 @@ mod tests {
     #[test]
     fn test_exit_code_verify_returns_5() {
         let e = CliError::Verify(VerifyError::SbomMissing);
+        assert_eq!(e.exit_code(), 5);
+    }
+
+    // Catches: RegistryPullError mapped to anything but 5. The
+    // pull is the prelude to verify; a registry-side failure that
+    // exits 4 would mis-route a CI script to the publish-class
+    // recovery path (where 4 means "transient, retry"). Pull
+    // failures are NOT generally retryable — a malformed ref,
+    // 404 manifest, or tampered blob is a real verify-side
+    // problem.
+    #[test]
+    fn test_exit_code_registry_pull_returns_5() {
+        let e = CliError::RegistryPull(RegistryPullError::MalformedRef {
+            got: "bad".into(),
+            reason: "test".into(),
+        });
         assert_eq!(e.exit_code(), 5);
     }
 
