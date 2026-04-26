@@ -292,7 +292,10 @@ for publish errors; underlying tool stderr for build/attest errors.
 3    AttestError     — re-run with --no-attest if signing infra is
                        unavailable; otherwise fix and retry
 4    PublishError    — transient or auth; safe to retry
-64+  catastrophic / unexpected
+5    VerifyError     — verify pillar failed or policy violation;
+                       not transient — fix the artifact / policy
+64+  catastrophic / unexpected (CLI-local: argument parsing,
+                       sink URI typos, IO errors writing -o files)
 ```
 
 CI pipelines route on the exit code without parsing stderr.

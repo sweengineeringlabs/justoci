@@ -1,452 +1,348 @@
-//! `ocimage` — the operator-facing CLI.
+//! `ocimage` — clap dispatcher + spec-doc §7 exit-code mapping.
 //!
-//! Subcommands: `build` (2f-α), `publish-http` (2f-β Level 2),
-//! `push` (2f-β Level 4), `systemd generate` (2f-δ).
+//! All business logic lives in the `swe_justoci_oci_cli` library
+//! (`cmd::*`, `verify_engine`, `policy`, `referrers`). This binary
+//! is a thin shim: parse args, call one of the typed entry points,
+//! print the result on stdout (machine-readable), exit with the
+//! right code.
 
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use tracing_subscriber::EnvFilter;
 
-use oci_build::build_image;
-use oci_publish::{
-    attest_build_dir, publish_http, push_oci, sbom_from_build_dir, write_attestation_statement,
-    AttestMode,
-};
-use oci_systemd::{generate_unit, UnitOptions};
+use swe_justoci_oci_cli::cmd::publish::AuthMode;
+use swe_justoci_oci_cli::cmd::sbom::SbomFormat;
+use swe_justoci_oci_cli::cmd::{build, inspect, publish, sbom, verify};
+use swe_justoci_oci_cli::error::CliError;
+use swe_justoci_oci_cli::verify_engine::PillarVerdict;
 
 #[derive(Debug, Parser)]
-#[command(version, about = "Build and publish vmisolate VM images (ADR-015).")]
+#[command(version, about = "Build, publish, and verify justoci OCI artifacts.")]
 struct Cli {
+    /// Suppress secondary stderr human-eyes log lines. Stdout
+    /// stays machine-parseable; the flag governs the `tracing`
+    /// preamble only.
+    #[arg(long, global = true)]
+    quiet: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
 
 #[derive(Debug, Subcommand)]
 enum Commands {
-    /// Build a VM image from a TOML spec. Outputs kernel +
-    /// initrd.cpio + rootfs.ext4 + config.json to `--output`.
+    /// Produce an OCI image dir from a justoci spec, optionally
+    /// emitting SLSA + SBOM + cosign signature referrers.
     Build {
-        /// Path to the `ImageSpec` TOML file. Relative paths
-        /// inside the spec resolve against this file's parent
-        /// directory.
+        /// Path to the justoci spec TOML.
         spec: PathBuf,
 
         /// Output directory. Created if missing.
-        #[arg(long, short = 'o', default_value = "build/out")]
+        #[arg(short = 'o', long, default_value = "build/out")]
         output: PathBuf,
 
-        /// Host path to the Linux kernel bzImage to embed.
-        /// Defaults to the canonical repo location.
-        #[arg(
-            long,
-            env = "OCIMAGE_KERNEL",
-            default_value = "downloads/bzImage_6.19.7"
-        )]
-        kernel: PathBuf,
-
-        /// Host path to the xkvm-fs PID-1 init binary. `bootstrap.sh`
-        /// produces it under `downloads/xkvm-fs`.
-        #[arg(
-            long,
-            env = "OCIMAGE_XKVM_FS",
-            default_value = "downloads/xkvm-fs"
-        )]
-        xkvm_fs: PathBuf,
-    },
-
-    /// Publish a built image to a local directory as an
-    /// ADR-015 Level-2 index.json + content-addressed blobs.
-    /// Pair with any static HTTP host.
-    PublishHttp {
-        /// Directory produced by a previous `build` — must
-        /// contain kernel, initrd.cpio, config.json (+ optionally
-        /// rootfs.ext4).
-        build_dir: PathBuf,
-
-        /// Where to write `index.json` + `blobs/sha256/<hash>`.
-        /// Created if missing. Existing `index.json` is merged
-        /// (entry for this image id replaced, others preserved).
-        #[arg(long, short = 'o')]
-        output: PathBuf,
-
-        /// Emit a SLSA provenance attestation alongside the
-        /// published artefacts (ADR-016 pillar B). Writes
-        /// `attestation.json` (in-toto Statement, compact JSON)
-        /// into the output directory. Unsigned by default;
-        /// set `--sign-with` to cosign-sign the statement.
+        /// Skip the attestation pipeline. Surfaces as exit 0 with
+        /// "skipped: --no-attest" on stdout. Useful for offline
+        /// dev iteration; production builds should NOT set this.
         #[arg(long)]
-        attest: bool,
-
-        /// Signing mode when `--attest` is set. Accepted values:
-        /// `unsigned` (default — NoopAttester; never valid for
-        /// production verifiers), `cosign-keyless:<identity>`,
-        /// or `cosign-keyed:<path>:<identity>`. Cosign must be on
-        /// PATH for the cosign modes.
-        #[arg(long, default_value = "unsigned")]
-        sign_with: String,
-
-        /// Builder identity to embed in the SLSA predicate. In CI:
-        /// the workflow run URL. Locally: any operator-chosen
-        /// identifier. Defaults to `local-operator` when empty.
-        #[arg(long, default_value = "")]
-        builder_id: String,
+        no_attest: bool,
     },
 
-    /// Push a built image to an OCI distribution registry
-    /// (GHCR, Harbor, ECR, …). Auth via env vars
-    /// `OCIMAGE_REGISTRY_USER` + `OCIMAGE_REGISTRY_PASSWORD`;
-    /// anonymous if unset.
-    Push {
-        /// Directory produced by a previous `build`.
-        build_dir: PathBuf,
+    /// Push a built OCI image dir to a sink (HTTP static dir or
+    /// OCI Distribution v2 registry).
+    Publish {
+        /// OCI image dir produced by `ocimage build`.
+        dir: PathBuf,
 
-        /// OCI reference — `host[:port]/namespace/name:tag`.
-        /// Example: `ghcr.io/acme/vmisolate-alpine:3.20`.
-        reference: String,
-
-        /// Emit a SLSA provenance attestation alongside the
-        /// pushed artefact (ADR-016 pillar B). Writes
-        /// `attestation.json` next to the build directory so the
-        /// operator can hand it to `cosign attest` directly, or
-        /// so a CI pipeline can upload it to the registry as an
-        /// OCI artifact. Unsigned by default.
+        /// Sink URI. Either `http:<path>` for a static-served
+        /// directory, or `registry:<host>/<repo>:<tag>` for an
+        /// OCI Distribution v2 registry.
         #[arg(long)]
-        attest: bool,
+        to: String,
 
-        /// Signing mode when `--attest` is set. See `publish-http`
-        /// docs for the format.
-        #[arg(long, default_value = "unsigned")]
-        sign_with: String,
+        /// Auth mode for `registry:` sinks. `env` (default) reads
+        /// REGISTRY_TOKEN, then REGISTRY_USERNAME+REGISTRY_PASSWORD.
+        /// `basic` requires --registry-username + --registry-password.
+        /// `bearer` requires --registry-token.
+        #[arg(long, default_value = "env")]
+        auth: String,
 
-        /// Builder identity to embed in the SLSA predicate.
-        #[arg(long, default_value = "")]
-        builder_id: String,
+        /// Username for `--auth basic`.
+        #[arg(long, env = "REGISTRY_USERNAME")]
+        registry_username: Option<String>,
+
+        /// Password for `--auth basic`.
+        #[arg(long, env = "REGISTRY_PASSWORD")]
+        registry_password: Option<String>,
+
+        /// Bearer token for `--auth bearer`.
+        #[arg(long, env = "REGISTRY_TOKEN")]
+        registry_token: Option<String>,
     },
 
-    /// Emit a CycloneDX SBOM from a built image's `build-manifest.json`
-    /// (ADR-016 pillar C). The output is a valid CycloneDX v1.5
-    /// document that Grype / Trivy / dependency-track can consume
-    /// without surface-scanning the rootfs filesystem.
+    /// Verify an OCI image dir's attestation pillars + (optional)
+    /// policy gates. v0 accepts only local OCI image-layout dirs.
+    Verify {
+        /// Path to the OCI image-layout directory.
+        reference: PathBuf,
+
+        /// Optional policy.toml declaring slsa.level / sign /
+        /// sbom gates. Without it, verify reports the pillar
+        /// states informationally and exits 0.
+        #[arg(long)]
+        policy: Option<PathBuf>,
+    },
+
+    /// Emit (from spec) or extract (from image dir) an SBOM.
     Sbom {
-        /// Directory produced by a previous `ocimage build` — must
-        /// contain `build-manifest.json` (emitted by default since
-        /// Phase 2f-α).
-        build_dir: PathBuf,
+        /// Either a spec.toml (preview SBOM) or an image dir
+        /// (extract emitted SBOM).
+        input: PathBuf,
 
-        /// Path where the CycloneDX document is written. Defaults
-        /// to `<build-dir>/packages.cdx.json` so the SBOM lives
-        /// alongside the artefacts.
-        #[arg(long, short = 'o')]
+        /// Where to write the SBOM. Without this, writes to stdout.
+        #[arg(short = 'o', long)]
         output: Option<PathBuf>,
+
+        /// SBOM format. Only honoured in spec mode (image mode
+        /// returns whatever format the build emitted).
+        #[arg(long, default_value = "cyclonedx")]
+        format: String,
     },
 
-    /// Systemd integration. Generate `.service` units that boot a
-    /// previously-built image via xkvm on a target host.
-    Systemd {
-        #[command(subcommand)]
-        action: SystemdAction,
-    },
-}
-
-#[derive(Debug, Subcommand)]
-enum SystemdAction {
-    /// Emit a systemd `.service` unit whose `ExecStart` is
-    /// `xkvm boot --kernel … --initrd … --kali …` against the
-    /// artifacts under `<build-dir>`.
-    Generate {
-        /// Directory produced by a previous `ocimage build`.
-        /// Must contain `kernel`, `initrd.cpio`, `rootfs.ext4`,
-        /// `config.json`.
-        build_dir: PathBuf,
-
-        /// Destination for the unit. If this points at an existing
-        /// directory, the filename is synthesised from the image id
-        /// (slashes → `-`, colons → `_`, plus a `.service` suffix).
-        #[arg(long, short = 'o')]
-        output: PathBuf,
-
-        /// Absolute path to xkvm on the host that will run the unit.
-        #[arg(long, default_value = "/usr/bin/xkvm")]
-        xkvm_path: PathBuf,
-
-        /// Optional `User=` line. Omit to run the unit as root.
-        #[arg(long)]
-        user: Option<String>,
-
-        /// `[Install] WantedBy=` target.
-        #[arg(long, default_value = "multi-user.target")]
-        wanted_by: String,
+    /// Inspect a spec (canonical bytes + spec hash) or an image
+    /// dir (manifest digest + config + layers + referrers).
+    Inspect {
+        input: PathBuf,
     },
 }
 
 fn main() -> ExitCode {
-    let filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_target(false)
-        .with_writer(std::io::stderr)
-        .init();
-
+    // We initialise tracing AFTER parsing args so `--quiet` can
+    // suppress it. EnvFilter still reads RUST_LOG / OCIMAGE_LOG.
     let cli = Cli::parse();
 
-    match run(cli) {
+    if !cli.quiet {
+        let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .with_target(false)
+            .with_writer(std::io::stderr)
+            .try_init();
+    }
+
+    match dispatch(cli.command) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("ocimage: {e:#}");
-            ExitCode::from(1)
+            // Diagnostics on stderr — operators see the chained
+            // error context. Stdout already carries any partial
+            // machine-readable output the subcommand wrote
+            // before failing.
+            let _ = writeln!(std::io::stderr(), "ocimage: {e}");
+            // Walk error sources for the full chain.
+            let mut src = std::error::Error::source(&e);
+            while let Some(s) = src {
+                let _ = writeln!(std::io::stderr(), "  caused by: {s}");
+                src = s.source();
+            }
+            ExitCode::from(e.exit_code())
         }
     }
 }
 
-fn run(cli: Cli) -> anyhow::Result<()> {
-    match cli.command {
+fn dispatch(command: Commands) -> Result<(), CliError> {
+    match command {
         Commands::Build {
             spec,
             output,
-            kernel,
-            xkvm_fs,
+            no_attest,
         } => {
-            tracing::info!(
-                spec = %spec.display(),
-                output = %output.display(),
-                "building image",
-            );
-            let artifacts = build_image(&spec, &output, kernel, xkvm_fs)?;
-            println!("kernel:  {}", artifacts.kernel_path.display());
-            println!("initrd:  {}", artifacts.initrd_path.display());
-            if let Some(r) = &artifacts.rootfs_path {
-                println!("rootfs:  {}", r.display());
+            let summary = build::run(&spec, &output, no_attest)?;
+            // Machine-readable stdout. Operators / CI parse line-
+            // prefix to extract digests.
+            println!("manifest_digest: {}", summary.manifest_digest);
+            println!("spec_hash:       {}", summary.spec_hash);
+            println!("output_dir:      {}", summary.output_dir.display());
+            match &summary.attestation_summary {
+                None => println!("attestation:     skipped: --no-attest"),
+                Some(a) => {
+                    println!(
+                        "slsa:            {}",
+                        a.slsa_digest.as_deref().unwrap_or("(off)")
+                    );
+                    println!(
+                        "sbom:            {}",
+                        a.sbom_digest.as_deref().unwrap_or("(off)")
+                    );
+                    println!(
+                        "signature:       {}",
+                        a.signature_digest.as_deref().unwrap_or("(off)")
+                    );
+                }
             }
-            println!("config:  {}", artifacts.config_path.display());
             Ok(())
         }
-        Commands::PublishHttp {
-            build_dir,
+        Commands::Publish {
+            dir,
+            to,
+            auth,
+            registry_username,
+            registry_password,
+            registry_token,
+        } => {
+            let auth_mode = parse_auth_mode(
+                &auth,
+                registry_username,
+                registry_password,
+                registry_token,
+            )?;
+            let outcome = publish::run(&dir, &to, auth_mode)?;
+            for d in &outcome.digests_pushed {
+                println!("pushed:  {d}");
+            }
+            for d in &outcome.digests_skipped {
+                println!("skipped: {d}");
+            }
+            println!("bytes:   {}", outcome.bytes_uploaded);
+            Ok(())
+        }
+        Commands::Verify { reference, policy } => {
+            let report = verify::run(&reference, policy.as_deref())?;
+            println!("manifest: {}", report.manifest_digest);
+            println!(
+                "slsa:      {}  {}",
+                report.slsa.label(),
+                pillar_detail(&report.slsa)
+            );
+            println!(
+                "sbom:      {}  {}",
+                report.sbom.label(),
+                pillar_detail(&report.sbom)
+            );
+            println!(
+                "signature: {}  {}",
+                report.signature.label(),
+                pillar_detail(&report.signature)
+            );
+            Ok(())
+        }
+        Commands::Sbom {
+            input,
             output,
-            attest,
-            sign_with,
-            builder_id,
+            format,
         } => {
-            tracing::info!(
-                build_dir = %build_dir.display(),
-                output = %output.display(),
-                "publishing http (level 2)",
-            );
-            let summary = publish_http(&build_dir, &output)?;
-            println!("image:    {}", summary.image_id);
-            println!("index:    {}", summary.index_path.display());
-            println!("blobs:    {}", summary.blob_count);
-            println!("bytes:    {}", summary.total_bytes);
-
-            if attest {
-                let mode = parse_attest_mode(&sign_with)?;
-                let attestation = attest_build_dir(
-                    &build_dir,
-                    &summary.image_id,
-                    &builder_id,
-                    mode,
-                )
-                .map_err(|e| oci_build::api::error::Error::Config {
-                    message: format!("{e}"),
-                })?;
-                let sidecar = output.join("attestation.json");
-                write_attestation_statement(&attestation, &sidecar).map_err(|e| {
-                    oci_build::api::error::Error::Config {
-                        message: format!("{e}"),
+            let fmt = SbomFormat::parse(&format)?;
+            let bytes = sbom::run(&input, fmt)?;
+            match output {
+                Some(p) => {
+                    std::fs::write(&p, &bytes).map_err(|source| CliError::CliIo {
+                        path: p.display().to_string(),
+                        source,
+                    })?;
+                    println!("sbom: {}", p.display());
+                    println!("bytes: {}", bytes.len());
+                }
+                None => {
+                    std::io::stdout()
+                        .write_all(&bytes)
+                        .map_err(|source| CliError::CliIo {
+                            path: "<stdout>".into(),
+                            source,
+                        })?;
+                }
+            }
+            Ok(())
+        }
+        Commands::Inspect { input } => {
+            match inspect::run(&input)? {
+                inspect::InspectOutput::Spec {
+                    canonical_json,
+                    spec_hash,
+                } => {
+                    std::io::stdout()
+                        .write_all(&canonical_json)
+                        .map_err(|source| CliError::CliIo {
+                            path: "<stdout>".into(),
+                            source,
+                        })?;
+                    println!();
+                    println!("spec_hash: {spec_hash}");
+                }
+                inspect::InspectOutput::Image {
+                    manifest_digest,
+                    config_digest,
+                    config_media_type,
+                    layers,
+                    referrers,
+                } => {
+                    println!("manifest_digest: {manifest_digest}");
+                    println!("config:          {config_digest} ({config_media_type})");
+                    for (i, l) in layers.iter().enumerate() {
+                        println!(
+                            "layer[{i}]:  {} ({}, {} bytes)",
+                            l.digest, l.media_type, l.size
+                        );
                     }
-                })?;
-                println!("attest:   {}", sidecar.display());
-                if attestation.signature().is_unsigned() {
-                    println!("          (unsigned — dev mode; use --sign-with=cosign-keyless:<id> for real signing)");
-                }
-            }
-            Ok(())
-        }
-        Commands::Push {
-            build_dir,
-            reference,
-            attest,
-            sign_with,
-            builder_id,
-        } => {
-            tracing::info!(
-                build_dir = %build_dir.display(),
-                reference = %reference,
-                "pushing oci (level 4)",
-            );
-            let summary = push_oci(&build_dir, &reference)?;
-            println!("reference: {}", summary.reference);
-            println!("digest:    {}", summary.manifest_digest);
-            println!("pushed:    {} bytes", summary.bytes_pushed);
-
-            if attest {
-                let mode = parse_attest_mode(&sign_with)?;
-                let attestation = attest_build_dir(
-                    &build_dir,
-                    &summary.reference,
-                    &builder_id,
-                    mode,
-                )
-                .map_err(|e| oci_build::api::error::Error::Config {
-                    message: format!("{e}"),
-                })?;
-                let sidecar = build_dir.join("attestation.json");
-                write_attestation_statement(&attestation, &sidecar).map_err(|e| {
-                    oci_build::api::error::Error::Config {
-                        message: format!("{e}"),
+                    for r in &referrers {
+                        println!(
+                            "referrer: {}  {} ({} bytes)",
+                            r.digest, r.artifact_type, r.size
+                        );
                     }
-                })?;
-                println!("attest:    {}", sidecar.display());
-                if attestation.signature().is_unsigned() {
-                    println!("           (unsigned — dev mode; use --sign-with=cosign-keyless:<id> for real signing)");
                 }
             }
             Ok(())
         }
-        Commands::Sbom { build_dir, output } => {
-            let out_path = output.unwrap_or_else(|| build_dir.join("packages.cdx.json"));
-            tracing::info!(
-                build_dir = %build_dir.display(),
-                output = %out_path.display(),
-                "generating CycloneDX SBOM",
-            );
-            let bytes = sbom_from_build_dir(&build_dir).map_err(|e| {
-                oci_build::api::error::Error::Config {
-                    message: format!("{e}"),
-                }
+    }
+}
+
+fn pillar_detail(v: &PillarVerdict) -> &str {
+    match v {
+        PillarVerdict::Missing => "(no referrer found)",
+        PillarVerdict::Found { detail } => detail,
+        PillarVerdict::Failed { detail } => detail,
+    }
+}
+
+fn parse_auth_mode(
+    raw: &str,
+    username: Option<String>,
+    password: Option<String>,
+    token: Option<String>,
+) -> Result<AuthMode, CliError> {
+    match raw {
+        "env" => Ok(AuthMode::Env),
+        "basic" => {
+            let username = username.ok_or_else(|| CliError::Cli {
+                detail: "--auth basic requires --registry-username (or REGISTRY_USERNAME)".into(),
             })?;
-            std::fs::write(&out_path, &bytes).map_err(|e| {
-                oci_build::api::error::Error::Config {
-                    message: format!("writing SBOM to {}: {e}", out_path.display()),
-                }
+            let password = password.ok_or_else(|| CliError::Cli {
+                detail: "--auth basic requires --registry-password (or REGISTRY_PASSWORD)".into(),
             })?;
-            println!("sbom:  {}", out_path.display());
-            println!("bytes: {}", bytes.len());
-            Ok(())
-        }
-        Commands::Systemd { action } => match action {
-            SystemdAction::Generate {
-                build_dir,
-                output,
-                xkvm_path,
-                user,
-                wanted_by,
-            } => {
-                tracing::info!(
-                    build_dir = %build_dir.display(),
-                    output = %output.display(),
-                    "generating systemd unit",
-                );
-                let opts = UnitOptions {
-                    xkvm_path,
-                    user,
-                    wanted_by,
-                };
-                let path = generate_unit(&build_dir, &output, opts)?;
-                println!("unit: {}", path.display());
-                Ok(())
+            if username.is_empty() || password.is_empty() {
+                return Err(CliError::Cli {
+                    detail: "--auth basic: username and password must be non-empty".into(),
+                });
             }
-        },
+            Ok(AuthMode::Basic { username, password })
+        }
+        "bearer" => {
+            let token = token.ok_or_else(|| CliError::Cli {
+                detail: "--auth bearer requires --registry-token (or REGISTRY_TOKEN)".into(),
+            })?;
+            if token.is_empty() {
+                return Err(CliError::Cli {
+                    detail: "--auth bearer: token must be non-empty".into(),
+                });
+            }
+            Ok(AuthMode::Bearer { token })
+        }
+        other => Err(CliError::Cli {
+            detail: format!(
+                "--auth: unknown mode {other:?} (expected env, basic, or bearer)"
+            ),
+        }),
     }
 }
-
-/// Parse the `--sign-with` flag into an `AttestMode`.
-///
-/// Accepts:
-///   * `"unsigned"` — NoopAttester (dev default)
-///   * `"cosign-keyless:<identity>"` — cosign keyless + OIDC
-///   * `"cosign-keyed:<path>:<identity>"` — cosign keyed file
-///
-/// Unknown values → `Error::Config` with an explanation.
-fn parse_attest_mode(raw: &str) -> Result<AttestMode, oci_build::api::error::Error> {
-    if raw == "unsigned" {
-        return Ok(AttestMode::Unsigned);
-    }
-    if let Some(identity) = raw.strip_prefix("cosign-keyless:") {
-        if identity.is_empty() {
-            return Err(oci_build::api::error::Error::Config {
-                message: "--sign-with=cosign-keyless:<identity> — identity is empty".into(),
-            });
-        }
-        return Ok(AttestMode::CosignKeyless {
-            identity: identity.to_string(),
-        });
-    }
-    if let Some(rest) = raw.strip_prefix("cosign-keyed:") {
-        let (key_path, identity) = rest.split_once(':').ok_or_else(|| {
-            oci_build::api::error::Error::Config {
-                message: "--sign-with=cosign-keyed:<path>:<identity> — missing :identity part".into(),
-            }
-        })?;
-        if key_path.is_empty() || identity.is_empty() {
-            return Err(oci_build::api::error::Error::Config {
-                message: "--sign-with=cosign-keyed:<path>:<identity> — path and identity must be non-empty".into(),
-            });
-        }
-        return Ok(AttestMode::CosignKeyed {
-            key_path: PathBuf::from(key_path),
-            identity: identity.to_string(),
-        });
-    }
-    Err(oci_build::api::error::Error::Config {
-        message: format!(
-            "--sign-with: unknown mode {raw:?}. Accepted: unsigned, cosign-keyless:<id>, cosign-keyed:<path>:<id>"
-        ),
-    })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parse_attest_mode_unsigned() {
-        let m = parse_attest_mode("unsigned").unwrap();
-        assert!(matches!(m, AttestMode::Unsigned));
-    }
-
-    #[test]
-    fn test_parse_attest_mode_cosign_keyless() {
-        let m = parse_attest_mode("cosign-keyless:https://ci.example.com/run/1").unwrap();
-        match m {
-            AttestMode::CosignKeyless { identity } => {
-                assert_eq!(identity, "https://ci.example.com/run/1");
-            }
-            other => panic!("wrong variant: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn test_parse_attest_mode_cosign_keyed() {
-        let m = parse_attest_mode("cosign-keyed:/keys/cosign.key:fingerprint:abc").unwrap();
-        match m {
-            AttestMode::CosignKeyed { key_path, identity } => {
-                assert_eq!(key_path, PathBuf::from("/keys/cosign.key"));
-                assert_eq!(identity, "fingerprint:abc");
-            }
-            other => panic!("wrong variant: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn test_parse_attest_mode_rejects_unknown() {
-        let err = parse_attest_mode("bogus").unwrap_err();
-        assert!(format!("{err}").contains("unknown mode"));
-    }
-
-    #[test]
-    fn test_parse_attest_mode_rejects_empty_keyless_identity() {
-        let err = parse_attest_mode("cosign-keyless:").unwrap_err();
-        assert!(format!("{err}").contains("identity is empty"));
-    }
-
-    #[test]
-    fn test_parse_attest_mode_rejects_malformed_keyed() {
-        let err = parse_attest_mode("cosign-keyed:/keys/cosign.key").unwrap_err();
-        assert!(format!("{err}").contains("missing :identity"));
-    }
-}
-

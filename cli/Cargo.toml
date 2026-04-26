@@ -2,26 +2,50 @@
 name = "swe_justoci_oci_cli"
 version = "0.1.0"
 edition = "2021"
-description = "ocimage — operator-facing CLI that drives oci-build + oci-publish. Subcommands: build, publish-http, push."
+description = "ocimage — operator-facing CLI for justoci. Subcommands: build, publish, verify, sbom, inspect."
 license = "MIT"
-repository = "https://github.com/sweengineeringlabs/vmisolate"
+repository = "https://github.com/sweengineeringlabs/justoci"
 authors = ["SWE Engineering Labs"]
 rust-version = "1.86"
 
 [package.metadata.struct-engine]
 application_type = "bin"
 
-# Binary-only crate. Name deliberately kept as `ocimage` — the
-# smoke-test + operator workflows reference the binary by that name.
+# Library + binary. The library exposes the typed subcommand
+# entry points, error mapping, verify pillar walker, and policy
+# parser so integration tests in `tests/` can drive subcommand
+# logic with stubbed cosign invokers without spawning the binary.
+# The binary is a thin shim that maps clap → library calls →
+# exit code; operators still invoke `ocimage` by name.
+[lib]
+name = "swe_justoci_oci_cli"
+path = "src/lib.rs"
+
 [[bin]]
 name = "ocimage"
 path = "src/main.rs"
 
 [dependencies]
+# Internal crates the CLI dispatches into.
+spec        = { workspace = true }
+cas         = { workspace = true }
+oci-build   = { workspace = true }
+attest      = { workspace = true }
+oci-publish = { workspace = true }
+
+# External — only what the CLI itself needs.
 clap               = { workspace = true }
 anyhow             = { workspace = true }
 tracing            = { workspace = true }
 tracing-subscriber = { workspace = true }
-oci-build          = { workspace = true }
-oci-publish        = { workspace = true }
-oci-systemd        = { workspace = true }
+serde              = { workspace = true }
+serde_json         = { workspace = true }
+toml               = { workspace = true }
+thiserror          = { workspace = true }
+sha2               = { workspace = true }
+
+[dev-dependencies]
+tempfile   = "3"
+assert_cmd = "2"
+predicates = "3"
+serde_json = { workspace = true }
