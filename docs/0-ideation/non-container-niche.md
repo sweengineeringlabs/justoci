@@ -14,6 +14,38 @@ content-addressed reference. Helm charts, WASM modules, ML model
 weights, and increasingly VM images and firmware are now
 distributed this way.
 
+## The Docker tool vs the OCI Distribution protocol
+
+A common confusion when entering this niche: **Docker the tool**
+(the container daemon you `docker run`) is *not* the same as
+**OCI Distribution v2** (the registry protocol that started in
+the Docker ecosystem and was standardised by OCI in 2017).
+
+| | Docker the tool | OCI Distribution v2 (the protocol) |
+|---|---|---|
+| What it is | A container runtime daemon | An HTTP-based content-addressed blob protocol |
+| Required by users? | No, only for container workflows | Yes — every OCI registry speaks it |
+| Speaks to registries | Yes, via the Distribution protocol | This is the protocol itself |
+| Plays a role in the non-container niche? | **No.** Embedded teams, ML model shippers, firmware vendors don't run Docker on dev boxes | **Yes.** It's the universal content-addressed channel for any artifact, container or not |
+
+ghcr.io, ECR, GCR, ACR, Harbor, Quay, the open-source
+`distribution` server, and dozens of others all speak OCI
+Distribution v2 — none of them require Docker the tool on the
+consumer side. They're HTTPS endpoints, not Docker hosts.
+
+**This is what makes the niche addressable.** The shipping
+infrastructure is already universal. Non-container artifact
+teams have a place to *put* their artifacts. The gap is that
+nobody packages an opinionated **build / sign / SBOM / push /
+verify** pipeline around that infrastructure for non-container
+shapes.
+
+Practical implication: justoci is a static binary that talks
+HTTPS to OCI registries. It does not depend on Docker at
+runtime, on dev boxes, or in production. Docker only appears in
+the test harness (`registry:2` is the easiest reference
+implementation to spin up in CI), never in the user's path.
+
 ## Where the gap is
 
 OCI artifact distribution has matured. **Attested artifact
@@ -106,5 +138,8 @@ sane defaults.
 - **"Container builders already do this"** — true for containers,
   not for the niche above. We're not competing with `docker
   buildx`; we're filling the non-container slot.
+- **"Doesn't this need Docker to run?"** — no. Docker the tool
+  plays no role at runtime; the registries the tool talks to
+  speak HTTP. See the table above for the full disentanglement.
 - **"Tooling sprawl is a problem"** — yes, which is why there's
   one tool here, not three.
