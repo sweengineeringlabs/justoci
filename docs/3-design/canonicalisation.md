@@ -45,7 +45,9 @@ Each step is deterministic and language-portable.
 The [JSON Canonicalization Scheme](https://datatracker.ietf.org/doc/html/rfc8785)
 is an IETF standard. Key rules:
 
-- **Object keys sorted lexicographically** (UTF-8 code-unit order).
+- **Object keys sorted lexicographically** (UTF-16 code-unit order
+  per RFC 8785 §3.2.3 — *not* UTF-8 byte order; the difference
+  matters for keys containing surrogate-pair characters).
 - **No insignificant whitespace.**
 - **Numbers in ECMA-262 round-trip form** (no `.0` on integers, no
   scientific notation unless required).
@@ -101,6 +103,80 @@ fields, not emitting `null` values.
 This means an empty `[platform]` (no `os`, no `arch`) becomes
 `platform` absent from the JSON, not `"platform": {}`.
 
+- Empty `[config]` (no keys) is treated as "absent" — `config`
+  is omitted from the canonical JSON. This is consistent with
+  `Option<>` field handling but worth stating explicitly because
+  `[config]` isn't `Option<>` at the type level: `ConfigBlob`
+  defaults to an empty `serde_json::Object`, and `config_to_json`
+  in `spec/src/saf/canonicalize.rs` collapses an empty object to
+  `None` before insertion. A re-implementation that emits
+  `"config": {}` will produce a different hash.
+- `description`, `slsa.builder_id`, and `sign.identity` follow
+  the same rule: `None` → key absent, never `null`.
+- `[platform]` is omitted only when **both** `os` *and* `arch`
+  are absent. `os` set, `arch` absent emits `{"os": "..."}` (with
+  no `arch` key) — the per-field omission rule applies inside the
+  block as well.
+- `annotations` is omitted when the `BTreeMap` is empty.
+
+### The `[attestation]` block is always emitted
+
+`[attestation]` is the one structural exception to the omission
+rule. Even when the source TOML has no `[attestation]` section at
+all (and `RawSpec.attestation` deserialises to `None`),
+`core/validate.rs` substitutes `AttestationConfig::default()`,
+and the canonicalised JSON contains a fully-populated
+`"attestation"` object with the default `slsa`, `sbom`, and
+`sign` sub-objects.
+
+This is a "default config when absent" rule, *not* the omission
+rule. A Go/Python/TypeScript re-implementation that copies
+"absent → omit" too literally produces a hash that differs from
+Rust on every spec that doesn't write `[attestation]`
+explicitly — the `minimal-raw-image/` fixture under
+`tests/fixtures/jcs/` is the regression test for exactly this
+mistake. See "Default `[attestation]` values" below for the
+substituted defaults a re-implementation MUST inject.
+
+### Default `[attestation]` values
+
+When a spec omits `[attestation]` (or omits one of the three
+sub-blocks `[attestation.slsa]`, `[attestation.sbom]`,
+`[attestation.sign]`), the canonicaliser substitutes the
+following defaults. The product opinion lives in each sub-type's
+`Default` impl in
+[`spec/src/api/attestation.rs`](../../spec/src/api/attestation.rs);
+the values enumerated here MUST stay in sync with that file.
+
+- `SlsaConfig::default()`:
+  - `level = SlsaLevel::L2` → JSON `"level": 2`
+  - `builder_id = None` → key omitted from JSON
+  (a `None` `builder_id` means "auto-derive at build time from
+  `<git remote>@<rev>`"; this is a runtime concern, but the
+  canonical hash must not bake the derived value in)
+- `SbomConfig::default()`:
+  - `format = SbomFormat::CycloneDx` → JSON `"format": "cyclonedx"`
+  - `scope = SbomScope::Layers` → JSON `"scope": "layers"`
+- `SignConfig::default()`:
+  - `kind = SignKind::CosignKeyless` → JSON `"kind": "cosign-keyless"`
+  - `identity = None` → key omitted from JSON
+
+A spec with no `[attestation]` at all therefore canonicalises
+its `attestation` field to:
+
+```json
+{
+  "slsa": {"level": 2},
+  "sbom": {"format": "cyclonedx", "scope": "layers"},
+  "sign": {"kind": "cosign-keyless"}
+}
+```
+
+If `Default::default()` for any of these sub-types changes, the
+JCS fixtures regenerate (and every recorded `expected.spec_hash`
+moves) — a deliberate signal that the on-by-default posture has
+shifted.
+
 ### Enums project to canonical strings
 
 `Kind::VmImage` → `"vm_image"`. `Compression::Gzip` → `"gzip"`.
@@ -118,7 +194,34 @@ tests can predict the JSON output without invoking JCS.
 
 `LayerSource::Blob { path }` paths normalise `\` → `/` before
 hashing, so a Windows build host and a Linux build host produce
-the same hash for the same spec.
+the same hash for the same spec. The same rule applies to
+`LayerSource::Files { entries }` — every `entry.source` runs
+through `normalise_path` before insertion.
+
+## TOML → JSON value projection
+
+The `[config]` block deserialises to a `toml::Value` (TOML is
+typed) and then projects to `serde_json::Value` for
+canonicalisation. The mapping lives in
+`spec/src/core/validate.rs::toml_to_json` and is the only path
+where TOML's type system differs meaningfully from JSON's. A
+Go/Python/TypeScript re-implementation MUST apply these rules
+identically:
+
+| TOML type | JSON projection | Notes |
+|---|---|---|
+| `String` | JSON string | UTF-8 source bytes; JCS handles escaping per RFC 8785 (control chars `\u0000`–`\u001F` get `\uXXXX`; non-ASCII codepoints emit as raw UTF-8, NOT `\uXXXX`) |
+| `Integer` | JSON integer | TOML lexical forms collapse: `1_000_000` → `1000000`, octal `0o644` → `420`, hex `0xff` → `255`, binary `0b1010` → `10`. The textual form is *not* preserved — re-impls that round-trip the lexeme will mismatch. |
+| `Float` | JSON number | ECMA-262 round-trip form per RFC 8785 §3.2.2.3: no trailing `.0` when the value is a whole-number-as-double (note: TOML `1.0` is a float, but the JSON projection emits `1` because JCS uses ECMA-262 numeric formatting which drops the `.0` for integer-valued doubles); lowercase `e`; scientific notation only when shorter than the decimal form (`1e+21`, but `0.001` not `1e-3`). |
+| `Boolean` | JSON `true` / `false` | identity |
+| `Array` | JSON array | Order preserved; elements project recursively. |
+| `Table` | JSON object | Keys sorted lexicographically (UTF-16 code-unit order per JCS) at every nesting level. The Rust impl uses `BTreeMap` to pre-sort; JCS re-sorts at the byte level, but the projection MUST produce a stable order so tests can predict the JSON output without invoking JCS. |
+| `Datetime` | JSON string | TOML's typed datetime variants (offset-datetime, local-datetime, local-date, local-time) all project via `toml::value::Datetime::to_string()`, which is RFC 3339 / ISO 8601-shaped (`2026-04-26T12:00:00Z`, `2026-04-26`, `12:00:00`, etc.). The OCI image config blob is untyped JSON, so the typed TOML datetime collapses to its string form; a re-impl that emits a JSON object like `{"$date": "..."}` or a numeric epoch will mismatch. |
+
+The `numeric-edge-cases/` and `nested-key-ordering/` fixtures
+under `tests/fixtures/jcs/` are the regression tests for this
+table. Worked examples for re-impl authors live next to each
+fixture's `README.md`.
 
 ## What goes into the hash
 
@@ -128,11 +231,11 @@ the same hash for the same spec.
   "id":           "<name>:<tag>",
   "kind":         "<kind>",
   "description":  "...",            // omitted if None
-  "platform":     {...},            // omitted if both fields None
+  "platform":     {...},            // omitted if both os and arch are absent
   "layers":       [...],            // ordered as written
-  "config":       {...},            // omitted if empty object
+  "config":       {...},            // omitted if empty object (see "Optional fields ...")
   "annotations":  {...},            // omitted if empty
-  "attestation":  {                 // always present
+  "attestation":  {                 // ALWAYS present — see "The [attestation] block is always emitted"
     "slsa": {"level": N, "builder_id": "..."},  // builder_id omitted if None
     "sbom": {"format": "...", "scope": "..."},
     "sign": {"kind": "...", "identity": "..."}  // identity omitted if None
@@ -142,7 +245,13 @@ the same hash for the same spec.
 
 `description`, `platform`, `config`, `annotations`, `slsa.builder_id`,
 and `sign.identity` are the only fields that change shape based
-on input. Everything else is always present in the canonical form.
+on input. Everything else is always present in the canonical
+form — including the entire `attestation` object, which is
+substituted with `AttestationConfig::default()` when the source
+TOML omits `[attestation]`. See the
+"The `[attestation]` block is always emitted" and
+"Default `[attestation]` values" subsections above for the
+complete substitution rules.
 
 ## What does NOT go into the hash
 
