@@ -34,9 +34,7 @@ pub mod api;
 pub mod core;
 pub mod saf;
 
-pub use api::attestation::{
-    AttestationOutputs, Sbom, SbomMediaType, Signature, SlsaStatement,
-};
+pub use api::attestation::{AttestationOutputs, Sbom, SbomMediaType, Signature, SlsaStatement};
 pub use api::built_artifact::BuiltArtifact;
 pub use api::error::AttestError;
 pub use saf::attest::attest;

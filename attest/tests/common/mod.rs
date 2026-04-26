@@ -5,7 +5,7 @@
 //! file because spec validation existence-tests layer sources.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::Path;
 
 use cas::{Algorithm, Digest};
 use spec::{parse_and_validate_str, spec_hash, Spec};
@@ -25,7 +25,7 @@ pub fn make_built_artifact() -> (BuiltArtifact, TempDir) {
     (built, tmp)
 }
 
-fn write_layer_files(dir: &PathBuf) {
+fn write_layer_files(dir: &Path) {
     fs::write(dir.join("kernel.bin"), b"fake-kernel").expect("write kernel");
     fs::write(dir.join("initrd.img"), b"fake-initrd").expect("write initrd");
     fs::write(dir.join("rootfs.ext4"), b"fake-rootfs").expect("write rootfs");

@@ -17,9 +17,7 @@ use crate::api::{
     SlsaLevel, Spec, SpecError, SpecVersion,
 };
 
-use super::raw::{
-    RawAttestation, RawLayer, RawLayerFile, RawSbom, RawSign, RawSlsa, RawSpec,
-};
+use super::raw::{RawAttestation, RawLayer, RawLayerFile, RawSbom, RawSign, RawSlsa, RawSpec};
 
 const SUPPORTED_VERSIONS: &[&str] = &["0"];
 
@@ -99,12 +97,10 @@ pub(crate) fn validate(raw: RawSpec, spec_dir: &Path) -> Result<Spec, SpecError>
 // ── id parsing ────────────────────────────────────────────────────
 
 fn parse_id(s: &str) -> Result<ArtifactId, SpecError> {
-    let (name, tag) = s
-        .split_once(':')
-        .ok_or(SpecError::MalformedId {
-            got: s.to_string(),
-            reason: "missing ':' between name and tag",
-        })?;
+    let (name, tag) = s.split_once(':').ok_or(SpecError::MalformedId {
+        got: s.to_string(),
+        reason: "missing ':' between name and tag",
+    })?;
 
     if name.is_empty() {
         return Err(SpecError::MalformedId {
@@ -171,11 +167,7 @@ fn check_layer_count(kind: Kind, actual: usize) -> Result<(), SpecError> {
     Ok(())
 }
 
-fn validate_layer(
-    position: usize,
-    raw: RawLayer,
-    spec_dir: &Path,
-) -> Result<Layer, SpecError> {
+fn validate_layer(position: usize, raw: RawLayer, spec_dir: &Path) -> Result<Layer, SpecError> {
     // Source mode: exactly one of `source` or `files`.
     let source = match (raw.source, raw.files) {
         (Some(_), Some(_)) => {
@@ -238,17 +230,7 @@ fn validate_layer(
             LayerSource::Files {
                 entries: files
                     .into_iter()
-                    .map(
-                        |RawLayerFile {
-                             source,
-                             dest,
-                             mode,
-                         }| LayerFile {
-                            source,
-                            dest,
-                            mode,
-                        },
-                    )
+                    .map(|RawLayerFile { source, dest, mode }| LayerFile { source, dest, mode })
                     .collect(),
             }
         }
@@ -295,9 +277,7 @@ fn validate_media_type_grammar(position: usize, mt: &str) -> Result<(), SpecErro
     }
     // Reject whitespace and control characters; accept the
     // RFC 6838 "restricted-name" plus '+' for the suffix marker.
-    let valid = |c: char| {
-        c.is_ascii_alphanumeric() || matches!(c, '.' | '+' | '-' | '_')
-    };
+    let valid = |c: char| c.is_ascii_alphanumeric() || matches!(c, '.' | '+' | '-' | '_');
     if !typ.chars().all(valid) || !rest.chars().all(valid) {
         return Err(SpecError::MalformedMediaType {
             position,
@@ -325,8 +305,7 @@ fn check_layer_order(kind: Kind, layers: &[Layer]) -> Result<(), SpecError> {
     // "initrd", layer 2 contains "rootfs". Substring check on the
     // media_type — strict enough to catch "did you reorder them"
     // without dictating exact MIME strings.
-    const VM_MARKERS: [(usize, &str); 3] =
-        [(0, "kernel"), (1, "initrd"), (2, "rootfs")];
+    const VM_MARKERS: [(usize, &str); 3] = [(0, "kernel"), (1, "initrd"), (2, "rootfs")];
     for (pos, marker) in VM_MARKERS {
         let mt = layers[pos].media_type.as_str();
         if !mt.contains(marker) {
@@ -342,9 +321,7 @@ fn check_layer_order(kind: Kind, layers: &[Layer]) -> Result<(), SpecError> {
 
 // ── annotations ───────────────────────────────────────────────────
 
-fn validate_reserved_annotations(
-    annotations: &BTreeMap<String, String>,
-) -> Result<(), SpecError> {
+fn validate_reserved_annotations(annotations: &BTreeMap<String, String>) -> Result<(), SpecError> {
     // The OCI image-spec defines a small set of annotation keys with
     // semantic value rules. v0 enforces a deliberate subset — any
     // future additions must come with a test that fails first.
@@ -381,8 +358,9 @@ fn validate_attestation(raw: RawAttestation) -> Result<AttestationConfig, SpecEr
     let slsa = match raw.slsa {
         Some(RawSlsa { level, builder_id }) => {
             let level = match level {
-                Some(n) => SlsaLevel::from_int(n)
-                    .ok_or(SpecError::SlsaLevelOutOfRange { got: n })?,
+                Some(n) => {
+                    SlsaLevel::from_int(n).ok_or(SpecError::SlsaLevelOutOfRange { got: n })?
+                }
                 None => SlsaConfig::default().level,
             };
             SlsaConfig { level, builder_id }
@@ -393,13 +371,11 @@ fn validate_attestation(raw: RawAttestation) -> Result<AttestationConfig, SpecEr
     let sbom = match raw.sbom {
         Some(RawSbom { format, scope }) => {
             let format = match format {
-                Some(s) => SbomFormat::parse(&s)
-                    .ok_or(SpecError::UnknownSbomFormat { got: s })?,
+                Some(s) => SbomFormat::parse(&s).ok_or(SpecError::UnknownSbomFormat { got: s })?,
                 None => SbomConfig::default().format,
             };
             let scope = match scope {
-                Some(s) => SbomScope::parse(&s)
-                    .ok_or(SpecError::UnknownSbomScope { got: s })?,
+                Some(s) => SbomScope::parse(&s).ok_or(SpecError::UnknownSbomScope { got: s })?,
                 None => SbomConfig::default().scope,
             };
             SbomConfig { format, scope }
@@ -410,8 +386,7 @@ fn validate_attestation(raw: RawAttestation) -> Result<AttestationConfig, SpecEr
     let sign = match raw.sign {
         Some(RawSign { kind, identity }) => {
             let kind = match kind {
-                Some(s) => SignKind::parse(&s)
-                    .ok_or(SpecError::UnknownSignKind { got: s })?,
+                Some(s) => SignKind::parse(&s).ok_or(SpecError::UnknownSignKind { got: s })?,
                 None => SignConfig::default().kind,
             };
             // cosign-key requires an identity (the key path).

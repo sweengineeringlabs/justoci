@@ -78,9 +78,19 @@ fn test_two_builds_produce_byte_identical_manifest_blobs() {
     let res_a = build(&spec, &out_a).unwrap();
     let res_b = build(&spec, &out_b).unwrap();
 
-    let bytes_a = fs::read(out_a.join("blobs").join("sha256").join(res_a.manifest_digest.hex()))
-        .unwrap();
-    let bytes_b = fs::read(out_b.join("blobs").join("sha256").join(res_b.manifest_digest.hex()))
-        .unwrap();
+    let bytes_a = fs::read(
+        out_a
+            .join("blobs")
+            .join("sha256")
+            .join(res_a.manifest_digest.hex()),
+    )
+    .unwrap();
+    let bytes_b = fs::read(
+        out_b
+            .join("blobs")
+            .join("sha256")
+            .join(res_b.manifest_digest.hex()),
+    )
+    .unwrap();
     assert_eq!(bytes_a, bytes_b, "manifest JSON bytes must be identical");
 }

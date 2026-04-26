@@ -75,8 +75,7 @@ fn test_publish_registry_emits_head_before_put_for_every_non_manifest_blob() {
     // hand back.
     let upload_url = format!("/v2/{repo}/blobs/uploads/abc-session");
     let post_init_mock = server.mock(|when, then| {
-        when.method(POST)
-            .path(format!("/v2/{repo}/blobs/uploads/"));
+        when.method(POST).path(format!("/v2/{repo}/blobs/uploads/"));
         then.status(202)
             .header("location", upload_url.clone())
             .body("");
@@ -178,8 +177,7 @@ fn test_publish_registry_skips_blobs_already_present_at_head() {
     // POST init must NOT be called. We register it as a
     // catch-all "if you call me, the test fails" mock.
     let post_init_must_not_fire = server.mock(|when, then| {
-        when.method(POST)
-            .path(format!("/v2/{repo}/blobs/uploads/"));
+        when.method(POST).path(format!("/v2/{repo}/blobs/uploads/"));
         then.status(202)
             .header("location", "/should-not-fire")
             .body("");
@@ -340,8 +338,7 @@ fn test_publish_registry_pushes_referrer_manifests_under_their_digest() {
         then.status(404);
     });
     server.mock(|when, then| {
-        when.method(POST)
-            .path(format!("/v2/{repo}/blobs/uploads/"));
+        when.method(POST).path(format!("/v2/{repo}/blobs/uploads/"));
         then.status(202)
             .header("location", format!("/v2/{repo}/blobs/uploads/sess"))
             .body("");

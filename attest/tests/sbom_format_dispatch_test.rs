@@ -43,7 +43,10 @@ fn run(format: SbomFormat) -> Option<SbomMediaType> {
 
 #[test]
 fn test_dispatch_cyclonedx_format_emits_cyclonedx_media_type() {
-    assert_eq!(run(SbomFormat::CycloneDx), Some(SbomMediaType::CycloneDxJson));
+    assert_eq!(
+        run(SbomFormat::CycloneDx),
+        Some(SbomMediaType::CycloneDxJson)
+    );
 }
 
 #[test]

@@ -152,9 +152,7 @@ enum Commands {
 
     /// Inspect a spec (canonical bytes + spec hash) or an image
     /// dir (manifest digest + config + layers + referrers).
-    Inspect {
-        input: PathBuf,
-    },
+    Inspect { input: PathBuf },
 }
 
 fn main() -> ExitCode {
@@ -230,12 +228,8 @@ fn dispatch(command: Commands) -> Result<(), CliError> {
             registry_password,
             registry_token,
         } => {
-            let auth_mode = parse_auth_mode(
-                &auth,
-                registry_username,
-                registry_password,
-                registry_token,
-            )?;
+            let auth_mode =
+                parse_auth_mode(&auth, registry_username, registry_password, registry_token)?;
             let outcome = publish::run(&dir, &to, auth_mode)?;
             for d in &outcome.digests_pushed {
                 println!("pushed:  {d}");
@@ -374,7 +368,8 @@ fn parse_verify_auth_mode(
         // silently accept the conflict — that would surprise an
         // operator who set both — so we surface a typed error
         // when both are present and meaningful.
-        let auth_was_set = raw != "env" || username.is_some() || password.is_some() || token.is_some();
+        let auth_was_set =
+            raw != "env" || username.is_some() || password.is_some() || token.is_some();
         if auth_was_set {
             return Err(CliError::Cli {
                 detail: "--no-auth is mutually exclusive with --auth / --registry-* flags".into(),
@@ -420,9 +415,7 @@ fn parse_auth_mode(
             Ok(AuthMode::Bearer { token })
         }
         other => Err(CliError::Cli {
-            detail: format!(
-                "--auth: unknown mode {other:?} (expected env, basic, or bearer)"
-            ),
+            detail: format!("--auth: unknown mode {other:?} (expected env, basic, or bearer)"),
         }),
     }
 }

@@ -237,13 +237,12 @@ impl ImageDir {
             path: index_path.clone(),
             source,
         })?;
-        let index: OciImageIndex = serde_json::from_slice(&index_bytes).map_err(|e| {
-            ImageDirError::MalformedJson {
+        let index: OciImageIndex =
+            serde_json::from_slice(&index_bytes).map_err(|e| ImageDirError::MalformedJson {
                 file: INDEX_JSON_FILE,
                 path: index_path.clone(),
                 detail: e.to_string(),
-            }
-        })?;
+            })?;
 
         // Walk every manifest descriptor in index.json, parse its
         // blob, and bucket into primary vs referrer based on the
@@ -298,7 +297,9 @@ impl ImageDir {
 
         let (primary_desc, primary_manifest) = match primary_candidates.len() {
             0 => return Err(ImageDirError::NoPrimaryManifest { path: index_path }),
-            1 => primary_candidates.pop().expect("len() == 1 confirmed above"),
+            1 => primary_candidates
+                .pop()
+                .expect("len() == 1 confirmed above"),
             n => {
                 return Err(ImageDirError::MultiplePrimaryManifests {
                     path: index_path,
@@ -308,13 +309,13 @@ impl ImageDir {
         };
 
         // Validate primary's config + layer blobs are present.
-        validate_descriptor_blob_present(path, &primary_manifest.config, "primary manifest config")?;
+        validate_descriptor_blob_present(
+            path,
+            &primary_manifest.config,
+            "primary manifest config",
+        )?;
         for (i, layer) in primary_manifest.layers.iter().enumerate() {
-            validate_descriptor_blob_present(
-                path,
-                layer,
-                &format!("primary manifest layer[{i}]"),
-            )?;
+            validate_descriptor_blob_present(path, layer, &format!("primary manifest layer[{i}]"))?;
         }
 
         // Validate every referrer's `subject` digest matches the
@@ -358,13 +359,12 @@ impl ImageDir {
         // legitimately share content (an empty config, e.g.).
         let mut seen: HashSet<String> = HashSet::new();
         let mut referenced: Vec<OciDescriptor> = Vec::new();
-        let push = |desc: OciDescriptor,
-                        seen: &mut HashSet<String>,
-                        out: &mut Vec<OciDescriptor>| {
-            if seen.insert(desc.digest.clone()) {
-                out.push(desc);
-            }
-        };
+        let push =
+            |desc: OciDescriptor, seen: &mut HashSet<String>, out: &mut Vec<OciDescriptor>| {
+                if seen.insert(desc.digest.clone()) {
+                    out.push(desc);
+                }
+            };
         for layer in &primary_manifest.layers {
             push(layer.clone(), &mut seen, &mut referenced);
         }
@@ -473,7 +473,10 @@ fn blob_path_of(root: &Path, digest: &str) -> Result<PathBuf, ImageDirError> {
             detail: format!("sha256 hex must be 64 chars, got {}", hex.len()),
         });
     }
-    if !hex.chars().all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c)) {
+    if !hex
+        .chars()
+        .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
+    {
         return Err(ImageDirError::InvalidDigestFormat {
             digest: digest.to_string(),
             detail: "hex must be lowercase".into(),
@@ -559,7 +562,7 @@ mod tests {
     #[test]
     fn test_blob_path_of_rejects_uppercase_hex() {
         let r = Path::new("/x");
-        let upper: String = std::iter::repeat('A').take(64).collect();
+        let upper: String = std::iter::repeat_n('A', 64).collect();
         let err = blob_path_of(r, &format!("sha256:{upper}")).unwrap_err();
         match err {
             ImageDirError::InvalidDigestFormat { detail, .. } => {
@@ -590,8 +593,11 @@ mod tests {
     #[test]
     fn test_blob_path_of_canonical_layout() {
         let r = Path::new("/x");
-        let hex: String = std::iter::repeat('a').take(64).collect();
+        let hex: String = std::iter::repeat_n('a', 64).collect();
         let p = blob_path_of(r, &format!("sha256:{hex}")).unwrap();
-        assert!(p.ends_with(format!("blobs/sha256/{hex}")) || p.ends_with(format!("blobs\\sha256\\{hex}")));
+        assert!(
+            p.ends_with(format!("blobs/sha256/{hex}"))
+                || p.ends_with(format!("blobs\\sha256\\{hex}"))
+        );
     }
 }

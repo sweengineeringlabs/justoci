@@ -49,12 +49,9 @@ fn test_publish_http_writes_oci_layout_and_index_and_every_blob() {
     for digest in layout.all_blob_digests() {
         let (_algo, hex) = digest.split_once(':').unwrap();
         let path = dst.path().join("blobs").join("sha256").join(hex);
-        let on_disk = fs::read(&path)
-            .unwrap_or_else(|e| panic!("blob {digest} not at {path:?}: {e}"));
-        let on_src = fs::read(
-            src.path().join("blobs").join("sha256").join(hex),
-        )
-        .unwrap();
+        let on_disk =
+            fs::read(&path).unwrap_or_else(|e| panic!("blob {digest} not at {path:?}: {e}"));
+        let on_src = fs::read(src.path().join("blobs").join("sha256").join(hex)).unwrap();
         assert_eq!(
             on_disk, on_src,
             "blob {digest} bytes differ between src and dst",

@@ -200,11 +200,7 @@ pub trait CosignVerifyInvoker: Send + Sync {
     /// Verify `bundle_bytes` cover `manifest_digest`. The caller has
     /// already located both — the trait is purely about cosign side
     /// effects.
-    fn verify(
-        &self,
-        manifest_digest: &str,
-        bundle_bytes: &[u8],
-    ) -> CosignVerifyOutcome;
+    fn verify(&self, manifest_digest: &str, bundle_bytes: &[u8]) -> CosignVerifyOutcome;
 }
 
 /// Real cosign verifier — spawns `cosign verify-blob`.
@@ -240,11 +236,7 @@ impl Default for RealCosignVerifyInvoker {
 }
 
 impl CosignVerifyInvoker for RealCosignVerifyInvoker {
-    fn verify(
-        &self,
-        manifest_digest: &str,
-        bundle_bytes: &[u8],
-    ) -> CosignVerifyOutcome {
+    fn verify(&self, manifest_digest: &str, bundle_bytes: &[u8]) -> CosignVerifyOutcome {
         // First: do the structural Rekor-bundle probe locally. If
         // cosign isn't present we still surface what the bundle
         // tells us, as a softer signal.
@@ -323,11 +315,7 @@ impl StubCosignVerifyInvoker {
 }
 
 impl CosignVerifyInvoker for StubCosignVerifyInvoker {
-    fn verify(
-        &self,
-        _manifest_digest: &str,
-        _bundle_bytes: &[u8],
-    ) -> CosignVerifyOutcome {
+    fn verify(&self, _manifest_digest: &str, _bundle_bytes: &[u8]) -> CosignVerifyOutcome {
         self.outcome.lock().expect("stub mutex").clone()
     }
 }
@@ -365,8 +353,8 @@ pub fn verify(
             path: ref_manifest_path,
             source,
         })?;
-        let ref_manifest: ReferrerManifest = serde_json::from_slice(&ref_bytes)
-            .map_err(|e| VerifyError::MalformedBlob {
+        let ref_manifest: ReferrerManifest =
+            serde_json::from_slice(&ref_bytes).map_err(|e| VerifyError::MalformedBlob {
                 digest: ref_desc.digest.clone(),
                 detail: format!("referrer manifest JSON: {e}"),
             })?;
@@ -429,22 +417,20 @@ pub fn verify(
 
     // ── Signature pillar ───────────────────────────────────
     let sig_verdict = match &sig_blob {
-        Some((digest, bytes)) => {
-            match cosign.verify(&primary_digest, bytes) {
-                CosignVerifyOutcome::VerifiedAndRecorded { log_index } => PillarVerdict::Found {
-                    detail: format!("cosign verified, rekor logIndex={log_index}, blob={digest}"),
-                },
-                CosignVerifyOutcome::VerifiedNotRecorded { reason } => PillarVerdict::Failed {
-                    detail: format!("cosign verified but Rekor not recorded: {reason}"),
-                },
-                CosignVerifyOutcome::InvalidSignature { stderr } => PillarVerdict::Failed {
-                    detail: format!("cosign rejected signature: {stderr}"),
-                },
-                CosignVerifyOutcome::CosignNotInstalled => PillarVerdict::Failed {
-                    detail: "cosign not installed; signature blob present but unverified".into(),
-                },
-            }
-        }
+        Some((digest, bytes)) => match cosign.verify(&primary_digest, bytes) {
+            CosignVerifyOutcome::VerifiedAndRecorded { log_index } => PillarVerdict::Found {
+                detail: format!("cosign verified, rekor logIndex={log_index}, blob={digest}"),
+            },
+            CosignVerifyOutcome::VerifiedNotRecorded { reason } => PillarVerdict::Failed {
+                detail: format!("cosign verified but Rekor not recorded: {reason}"),
+            },
+            CosignVerifyOutcome::InvalidSignature { stderr } => PillarVerdict::Failed {
+                detail: format!("cosign rejected signature: {stderr}"),
+            },
+            CosignVerifyOutcome::CosignNotInstalled => PillarVerdict::Failed {
+                detail: "cosign not installed; signature blob present but unverified".into(),
+            },
+        },
         None => PillarVerdict::Missing,
     };
 
@@ -505,8 +491,8 @@ fn validate_slsa_statement(
     bytes: &[u8],
     expected_manifest_digest: &str,
 ) -> Result<SlsaInfo, VerifyError> {
-    let stmt: serde_json::Value = serde_json::from_slice(bytes)
-        .map_err(|e| VerifyError::SlsaMalformed {
+    let stmt: serde_json::Value =
+        serde_json::from_slice(bytes).map_err(|e| VerifyError::SlsaMalformed {
             detail: format!("statement is not JSON: {e}"),
         })?;
 
@@ -518,9 +504,7 @@ fn validate_slsa_statement(
         })?;
     if predicate_type != SLSA_PROVENANCE_V1 {
         return Err(VerifyError::SlsaMalformed {
-            detail: format!(
-                "predicateType {predicate_type:?} != {SLSA_PROVENANCE_V1:?}"
-            ),
+            detail: format!("predicateType {predicate_type:?} != {SLSA_PROVENANCE_V1:?}"),
         });
     }
 
@@ -531,11 +515,12 @@ fn validate_slsa_statement(
         .map(|(_, h)| h)
         .unwrap_or(expected_manifest_digest);
 
-    let subjects = stmt.get("subject").and_then(|v| v.as_array()).ok_or_else(|| {
-        VerifyError::SlsaMalformed {
+    let subjects = stmt
+        .get("subject")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| VerifyError::SlsaMalformed {
             detail: "missing or non-array subject".into(),
-        }
-    })?;
+        })?;
     let mut found_subject = false;
     for s in subjects {
         if let Some(d) = s.get("digest").and_then(|v| v.as_object()) {
@@ -554,9 +539,11 @@ fn validate_slsa_statement(
         });
     }
 
-    let predicate = stmt.get("predicate").ok_or_else(|| VerifyError::SlsaMalformed {
-        detail: "missing predicate".into(),
-    })?;
+    let predicate = stmt
+        .get("predicate")
+        .ok_or_else(|| VerifyError::SlsaMalformed {
+            detail: "missing predicate".into(),
+        })?;
     let bd = predicate
         .get("buildDefinition")
         .ok_or_else(|| VerifyError::SlsaMalformed {
@@ -599,12 +586,11 @@ fn validate_slsa_statement(
 /// full SBOM schema — we check it is JSON and matches the
 /// declared media type's expected `bomFormat` / `spdxVersion`.
 fn validate_sbom(bytes: &[u8], media_type: &str) -> Result<(), VerifyError> {
-    let v: serde_json::Value = serde_json::from_slice(bytes).map_err(|e| {
-        VerifyError::MalformedBlob {
+    let v: serde_json::Value =
+        serde_json::from_slice(bytes).map_err(|e| VerifyError::MalformedBlob {
             digest: "<sbom>".into(),
             detail: format!("SBOM is not JSON: {e}"),
-        }
-    })?;
+        })?;
     if media_type.contains("cyclonedx") {
         let format = v.get("bomFormat").and_then(|x| x.as_str()).unwrap_or("");
         if format != "CycloneDX" {
@@ -962,6 +948,9 @@ mod tests {
             log_index: 42,
         });
         let out = stub.verify("sha256:x", b"{}");
-        assert_eq!(out, CosignVerifyOutcome::VerifiedAndRecorded { log_index: 42 });
+        assert_eq!(
+            out,
+            CosignVerifyOutcome::VerifiedAndRecorded { log_index: 42 }
+        );
     }
 }

@@ -59,9 +59,12 @@ fn test_generate_unit_writes_service_with_expected_keys() {
     stage_build_dir(&build, "alpine:3.20", "Alpine smoke image");
 
     let out = work.join("alpine.service");
-    let written =
-        generate_unit(&build, &out, UnitOptions::default()).expect("generate_unit");
-    assert!(written.exists(), "unit file must exist on disk: {:?}", written);
+    let written = generate_unit(&build, &out, UnitOptions::default()).expect("generate_unit");
+    assert!(
+        written.exists(),
+        "unit file must exist on disk: {:?}",
+        written
+    );
 
     let body = fs::read_to_string(&written).unwrap();
     let abs_build = fs::canonicalize(&build).unwrap();
@@ -143,8 +146,7 @@ fn test_generate_unit_absolutises_relative_build_dir() {
                 let head: String = rest.chars().take(3).collect();
                 head.len() == 3
                     && head.chars().nth(1) == Some(':')
-                    && (head.chars().nth(2) == Some('\\')
-                        || head.chars().nth(2) == Some('/'))
+                    && (head.chars().nth(2) == Some('\\') || head.chars().nth(2) == Some('/'))
             })
             .unwrap_or(false);
     assert!(is_abs, "--kernel path is not absolute in: {exec_line}");

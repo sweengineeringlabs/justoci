@@ -247,10 +247,7 @@ fn write_blob_if_absent(image_dir: &Path, bytes: &[u8]) -> Result<(), CliError> 
         return Ok(());
     }
     // Atomic: write to a tmp sibling then rename.
-    let tmp_path = blob_dir.join(format!(
-        ".{hex}.tmp-{}",
-        std::process::id()
-    ));
+    let tmp_path = blob_dir.join(format!(".{hex}.tmp-{}", std::process::id()));
     std::fs::write(&tmp_path, bytes).map_err(|source| CliError::CliIo {
         path: tmp_path.display().to_string(),
         source,
@@ -283,7 +280,9 @@ mod tests {
     fn test_hex_sha256_lowercase_64_chars() {
         let h = hex_sha256(b"hello");
         assert_eq!(h.len(), 64);
-        assert!(h.chars().all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c)));
+        assert!(h
+            .chars()
+            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c)));
         // Anchor to the known sha256 of "hello" so this can't
         // silently regress.
         assert_eq!(

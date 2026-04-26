@@ -68,8 +68,7 @@ fn test_publish_http_includes_referrer_config_and_layer_blobs() {
             "{label} blob {digest} must be present in dest at {path:?}",
         );
         let dst_bytes = fs::read(&path).unwrap();
-        let src_bytes =
-            fs::read(src.path().join("blobs").join("sha256").join(hex)).unwrap();
+        let src_bytes = fs::read(src.path().join("blobs").join("sha256").join(hex)).unwrap();
         assert_eq!(
             dst_bytes, src_bytes,
             "{label} blob {digest} bytes diverged between src and dst",
@@ -119,8 +118,7 @@ fn test_publish_registry_uploads_every_referrer_blob() {
         then.status(404);
     });
     server.mock(|when, then| {
-        when.method(POST)
-            .path(format!("/v2/{repo}/blobs/uploads/"));
+        when.method(POST).path(format!("/v2/{repo}/blobs/uploads/"));
         then.status(202)
             .header("location", format!("/v2/{repo}/blobs/uploads/sess"))
             .body("");
@@ -154,7 +152,8 @@ fn test_publish_registry_uploads_every_referrer_blob() {
     //   * total = 7
     let primary_non_manifest = layout.layers.len() + 1;
     let per_referrer_non_manifest = 2; // layer + config, the manifest goes via /manifests
-    let expected_blob_uploads = primary_non_manifest + layout.referrers.len() * per_referrer_non_manifest;
+    let expected_blob_uploads =
+        primary_non_manifest + layout.referrers.len() * per_referrer_non_manifest;
 
     assert_eq!(
         put_blob_mock.hits(),

@@ -37,10 +37,7 @@ pub fn parse_and_validate(path: impl AsRef<Path>) -> Result<LoadedSpec, SpecErro
 /// callers loading spec content from a non-filesystem source (a
 /// network fetch, a unit test inline-string) pass the directory
 /// they want layer paths anchored to.
-pub fn parse_and_validate_str(
-    toml_text: &str,
-    spec_dir: PathBuf,
-) -> Result<LoadedSpec, SpecError> {
+pub fn parse_and_validate_str(toml_text: &str, spec_dir: PathBuf) -> Result<LoadedSpec, SpecError> {
     let raw: RawSpec = toml::from_str(toml_text)?;
     let spec = validate::validate(raw, &spec_dir)?;
     Ok(LoadedSpec::new(spec, spec_dir))

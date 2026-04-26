@@ -22,13 +22,13 @@
 //! for the idempotency tests.
 
 #![allow(dead_code)] // Each individual test file uses a subset of
-                      // these helpers; cargo treats integration
-                      // tests as separate crates so unused-from-
-                      // here-but-used-from-there is a normal cross-
-                      // file dead-code warning. This allow is scoped
-                      // to the common test helper, NOT to a
-                      // production crate root. Per CLAUDE.md
-                      // memory note this is the permitted boundary.
+                     // these helpers; cargo treats integration
+                     // tests as separate crates so unused-from-
+                     // here-but-used-from-there is a normal cross-
+                     // file dead-code warning. This allow is scoped
+                     // to the common test helper, NOT to a
+                     // production crate root. Per CLAUDE.md
+                     // memory note this is the permitted boundary.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -168,10 +168,8 @@ impl Fixture {
         }
 
         // 5. write index.json referencing the primary + all referrers.
-        let mut manifest_descriptors = vec![manifest_descriptor_value(
-            &primary_manifest_blob,
-            None,
-        )];
+        let mut manifest_descriptors =
+            vec![manifest_descriptor_value(&primary_manifest_blob, None)];
         for r in &referrer_records {
             manifest_descriptors.push(manifest_descriptor_value(
                 &r.manifest_blob,

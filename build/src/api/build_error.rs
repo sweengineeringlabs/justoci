@@ -105,7 +105,7 @@ mod tests {
         // failed" but no way to know which layer (vm_image has 3).
         let err = BuildError::LayerCompression {
             position: 2,
-            source: io::Error::new(io::ErrorKind::Other, "broken pipe"),
+            source: io::Error::other("broken pipe"),
         };
         let s = err.to_string();
         assert!(s.contains("#2"), "missing layer position in: {s}");

@@ -93,12 +93,7 @@ pub fn assemble_layer(
             // streaming variant; not blocking v0.
             let tar_bytes = build_deterministic_tar(entries, spec_dir)
                 .map_err(|source| BuildError::TarBuild { position, source })?;
-            stream_through_compression(
-                layer.compression,
-                Cursor::new(tar_bytes),
-                position,
-                cas,
-            )?
+            stream_through_compression(layer.compression, Cursor::new(tar_bytes), position, cas)?
         }
     };
 
@@ -220,8 +215,7 @@ mod tests {
         std::fs::write(&initrd, b"i").unwrap();
         std::fs::write(&rootfs, b"r").unwrap();
 
-        let toml_text = format!(
-            r#"
+        let toml_text = r#"
 spec_version = "0"
 id = "x:1"
 kind = "vm_image"
@@ -236,10 +230,8 @@ compression = "gzip"
 source = "r.bin"
 media_type = "application/vnd.vmisolate.rootfs+gzip"
 compression = "gzip"
-            "#
-        );
-        let parsed =
-            spec::parse_and_validate_str(&toml_text, tmp.to_path_buf()).expect("valid");
+            "#;
+        let parsed = spec::parse_and_validate_str(toml_text, tmp.to_path_buf()).expect("valid");
         parsed.spec.layers[0].media_type.clone()
     }
 
@@ -267,8 +259,7 @@ compression = "gzip"
         };
 
         let result = assemble_layer(&layer, 0, tmp.path(), &cas).unwrap();
-        let expected_digest =
-            Digest::from_bytes(cas::Algorithm::Sha256, b"raw payload bytes");
+        let expected_digest = Digest::from_bytes(cas::Algorithm::Sha256, b"raw payload bytes");
         assert_eq!(result.digest, expected_digest);
         assert_eq!(result.size, b"raw payload bytes".len() as u64);
     }
@@ -388,8 +379,7 @@ compression = "gzip"
     impl<R: Read> Read for ProbeReader<R> {
         fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
             self.read_calls.fetch_add(1, Ordering::SeqCst);
-            self.max_buf_seen
-                .fetch_max(buf.len(), Ordering::SeqCst);
+            self.max_buf_seen.fetch_max(buf.len(), Ordering::SeqCst);
             self.inner.read(buf)
         }
     }
@@ -411,9 +401,7 @@ compression = "gzip"
 
         // Build a 1 MiB payload. Patterned bytes so the digest is
         // deterministic and the test can assert it.
-        let payload: Vec<u8> = (0..1024u32 * 1024)
-            .map(|i| (i & 0xff) as u8)
-            .collect();
+        let payload: Vec<u8> = (0..1024u32 * 1024).map(|i| (i & 0xff) as u8).collect();
         let payload_path = tmp.path().join("big.bin");
         std::fs::write(&payload_path, &payload).unwrap();
 
@@ -430,8 +418,7 @@ compression = "gzip"
             max_buf_seen: Arc::clone(&max_buf_seen),
         };
 
-        let (digest, size) =
-            stream_through_compression(Compression::None, probe, 0, &cas).unwrap();
+        let (digest, size) = stream_through_compression(Compression::None, probe, 0, &cas).unwrap();
 
         // Exactly the source bytes' digest — no compression, no
         // mangling.

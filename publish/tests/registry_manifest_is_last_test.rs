@@ -55,8 +55,7 @@ fn test_publish_registry_puts_manifest_after_all_blobs() {
     });
     let upload_url = format!("/v2/{repo}/blobs/uploads/sess");
     server.mock(|when, then| {
-        when.method(POST)
-            .path(format!("/v2/{repo}/blobs/uploads/"));
+        when.method(POST).path(format!("/v2/{repo}/blobs/uploads/"));
         then.status(202)
             .header("location", upload_url.clone())
             .body("");
@@ -139,8 +138,7 @@ fn test_publish_registry_blobs_complete_before_manifest_failure() {
     });
     let upload_url = format!("/v2/{repo}/blobs/uploads/sess");
     server.mock(|when, then| {
-        when.method(POST)
-            .path(format!("/v2/{repo}/blobs/uploads/"));
+        when.method(POST).path(format!("/v2/{repo}/blobs/uploads/"));
         then.status(202)
             .header("location", upload_url.clone())
             .body("");
@@ -166,10 +164,7 @@ fn test_publish_registry_blobs_complete_before_manifest_failure() {
             auth: None,
         },
     );
-    assert!(
-        result.is_err(),
-        "publish must error when manifest PUT 400s",
-    );
+    assert!(result.is_err(), "publish must error when manifest PUT 400s",);
 
     let non_manifest_count = layout.layers.len() + 1;
     assert_eq!(

@@ -142,18 +142,12 @@ fn build_files(built: &BuiltArtifact, scope: SbomScope) -> Value {
     if want_layers {
         for ((idx, digest), layer) in built.layer_digests.iter().zip(built.spec.layers.iter()) {
             let mut f = Map::new();
-            f.insert(
-                "SPDXID".to_string(),
-                Value::String(layer_spdx_id(*idx)),
-            );
+            f.insert("SPDXID".to_string(), Value::String(layer_spdx_id(*idx)));
             f.insert(
                 "fileName".to_string(),
                 Value::String(layer_file_name(*idx, layer)),
             );
-            f.insert(
-                "checksums".to_string(),
-                build_spdx_checksums(digest),
-            );
+            f.insert("checksums".to_string(), build_spdx_checksums(digest));
             f.insert(
                 "comment".to_string(),
                 Value::String(format!(
@@ -174,10 +168,7 @@ fn build_files(built: &BuiltArtifact, scope: SbomScope) -> Value {
                         "SPDXID".to_string(),
                         Value::String(format!("SPDXRef-Source-L{idx}-F{file_idx}")),
                     );
-                    f.insert(
-                        "fileName".to_string(),
-                        Value::String(entry.dest.clone()),
-                    );
+                    f.insert("fileName".to_string(), Value::String(entry.dest.clone()));
                     f.insert(
                         "comment".to_string(),
                         Value::String(format!(
@@ -239,10 +230,7 @@ fn build_relationships(built: &BuiltArtifact, scope: SbomScope) -> Value {
 fn build_spdx_checksums(digest: &Digest) -> Value {
     // SPDX `Checksum.algorithm` enum: `SHA256` (no dash, uppercase).
     let mut entry = Map::new();
-    entry.insert(
-        "algorithm".to_string(),
-        Value::String("SHA256".to_string()),
-    );
+    entry.insert("algorithm".to_string(), Value::String("SHA256".to_string()));
     entry.insert(
         "checksumValue".to_string(),
         Value::String(digest.hex().to_string()),

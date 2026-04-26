@@ -93,10 +93,7 @@ fn stable_serial_number(manifest: &Digest) -> String {
 fn build_metadata(built: &BuiltArtifact) -> Value {
     // `metadata.component` is the artifact this SBOM describes.
     let mut component = Map::new();
-    component.insert(
-        "type".to_string(),
-        Value::String("container".to_string()),
-    );
+    component.insert("type".to_string(), Value::String("container".to_string()));
     component.insert(
         "bom-ref".to_string(),
         Value::String(built.manifest_digest.to_string()),
@@ -142,10 +139,7 @@ fn build_components(built: &BuiltArtifact, scope: SbomScope) -> Value {
 
 fn build_layer_component(idx: usize, digest: &Digest, layer: &Layer) -> Value {
     let mut comp = Map::new();
-    comp.insert(
-        "type".to_string(),
-        Value::String("file".to_string()),
-    );
+    comp.insert("type".to_string(), Value::String("file".to_string()));
     comp.insert(
         "bom-ref".to_string(),
         Value::String(format!("layer-{idx}-{}", digest.hex())),
@@ -164,21 +158,12 @@ fn build_layer_component(idx: usize, digest: &Digest, layer: &Layer) -> Value {
 
 fn build_source_component(layer_idx: usize, file_idx: usize, entry: &spec::LayerFile) -> Value {
     let mut comp = Map::new();
-    comp.insert(
-        "type".to_string(),
-        Value::String("file".to_string()),
-    );
+    comp.insert("type".to_string(), Value::String("file".to_string()));
     comp.insert(
         "bom-ref".to_string(),
-        Value::String(format!(
-            "source-l{layer_idx}-f{file_idx}-{}",
-            entry.dest
-        )),
+        Value::String(format!("source-l{layer_idx}-f{file_idx}-{}", entry.dest)),
     );
-    comp.insert(
-        "name".to_string(),
-        Value::String(entry.dest.clone()),
-    );
+    comp.insert("name".to_string(), Value::String(entry.dest.clone()));
     let mut props = Vec::new();
     let mut src_prop = Map::new();
     src_prop.insert(

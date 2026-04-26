@@ -143,9 +143,8 @@ impl CosignInvoker for RealCosignInvoker {
                     None => {
                         let _ = std::fs::remove_file(&payload_path);
                         return CosignOutcome::SignFailed {
-                            stderr:
-                                "cosign-key mode requires sign.identity to point at a keyfile"
-                                    .to_string(),
+                            stderr: "cosign-key mode requires sign.identity to point at a keyfile"
+                                .to_string(),
                         };
                     }
                 };
@@ -287,9 +286,9 @@ pub fn sign_with(
                     .unwrap_or_else(|| "<unspecified>".to_string()),
             }))
         }
-        CosignOutcome::SignedNotRecorded { reason } => {
-            Err(AttestError::SignNotRecorded { rekor_error: reason })
-        }
+        CosignOutcome::SignedNotRecorded { reason } => Err(AttestError::SignNotRecorded {
+            rekor_error: reason,
+        }),
         CosignOutcome::SignFailed { stderr } => Err(AttestError::SignFailed { stderr }),
         CosignOutcome::CosignNotInstalled => Err(AttestError::CosignNotInstalled),
     }
@@ -377,10 +376,7 @@ mod tests {
                 }
             }
         }"#;
-        assert_eq!(
-            extract_rekor_log_index(bundle.as_bytes()),
-            Some(12345)
-        );
+        assert_eq!(extract_rekor_log_index(bundle.as_bytes()), Some(12345));
     }
 
     #[test]

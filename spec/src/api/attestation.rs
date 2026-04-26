@@ -3,22 +3,14 @@
 ///
 /// `Default::default()` produces the on-by-default posture the
 /// product opinion requires — callers that want overrides supply a
-/// non-default value via spec parsing.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// non-default value via spec parsing. The `Default` impl is
+/// derived; the product opinion lives in each sub-type's own
+/// `Default` (`SlsaConfig::default() == L2`, etc.).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct AttestationConfig {
     pub slsa: SlsaConfig,
     pub sbom: SbomConfig,
     pub sign: SignConfig,
-}
-
-impl Default for AttestationConfig {
-    fn default() -> Self {
-        AttestationConfig {
-            slsa: SlsaConfig::default(),
-            sbom: SbomConfig::default(),
-            sign: SignConfig::default(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

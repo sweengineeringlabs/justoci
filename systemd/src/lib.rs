@@ -116,9 +116,8 @@ pub fn generate_unit(
     // 1. Absolutise the build dir so the rendered unit doesn't depend
     //    on the caller's CWD. Canonicalize also verifies it exists
     //    and is readable — cheap front-loaded sanity check.
-    let build_dir = fs::canonicalize(build_dir).map_err(|e| {
-        Error::ArtifactMissing(format!("{}: {e}", build_dir.display()))
-    })?;
+    let build_dir = fs::canonicalize(build_dir)
+        .map_err(|e| Error::ArtifactMissing(format!("{}: {e}", build_dir.display())))?;
 
     // 2. Require every artifact the unit names — fail fast instead of
     //    writing a unit that will blow up at `systemctl start`.

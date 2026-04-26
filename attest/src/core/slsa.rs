@@ -95,16 +95,16 @@ pub(crate) fn build_statement_bytes(
 
 fn build_statement_value(built: &BuiltArtifact, slsa_cfg: &SlsaConfig) -> Value {
     let mut statement = Map::new();
-    statement.insert("_type".to_string(), Value::String(STATEMENT_TYPE.to_string()));
+    statement.insert(
+        "_type".to_string(),
+        Value::String(STATEMENT_TYPE.to_string()),
+    );
     statement.insert(
         "predicateType".to_string(),
         Value::String(SLSA_PROVENANCE_V1.to_string()),
     );
     statement.insert("subject".to_string(), build_subject(built));
-    statement.insert(
-        "predicate".to_string(),
-        build_predicate(built, slsa_cfg),
-    );
+    statement.insert("predicate".to_string(), build_predicate(built, slsa_cfg));
     Value::Object(statement)
 }
 
@@ -192,10 +192,7 @@ fn build_resolved_dependencies(built: &BuiltArtifact) -> Value {
     let mut deps = Vec::with_capacity(built.layer_digests.len());
     for ((idx, digest), layer) in built.layer_digests.iter().zip(built.spec.layers.iter()) {
         let mut entry = Map::new();
-        entry.insert(
-            "name".to_string(),
-            Value::String(layer_name(*idx, layer)),
-        );
+        entry.insert("name".to_string(), Value::String(layer_name(*idx, layer)));
         let mut digest_map = Map::new();
         digest_map.insert(
             digest.algorithm().as_str().to_string(),

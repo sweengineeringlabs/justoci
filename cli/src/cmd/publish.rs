@@ -28,10 +28,7 @@ pub enum AuthMode {
     /// `REGISTRY_USERNAME`+`REGISTRY_PASSWORD`).
     Env,
     /// HTTP Basic.
-    Basic {
-        username: String,
-        password: String,
-    },
+    Basic { username: String, password: String },
     /// Pre-acquired bearer token.
     Bearer { token: String },
 }
@@ -79,9 +76,7 @@ pub fn parse_sink_uri(raw: &str) -> Result<ParsedSink, CliError> {
         // split on the LAST `:` for the tag, then on the FIRST `/`
         // for the host/repo split.
         let (host_repo, tag) = rest.rsplit_once(':').ok_or_else(|| CliError::Cli {
-            detail: format!(
-                "--to registry:<host>/<repo>:<tag> — missing :tag in {raw:?}"
-            ),
+            detail: format!("--to registry:<host>/<repo>:<tag> — missing :tag in {raw:?}"),
         })?;
         if tag.is_empty() {
             return Err(CliError::Cli {
@@ -89,13 +84,13 @@ pub fn parse_sink_uri(raw: &str) -> Result<ParsedSink, CliError> {
             });
         }
         let (registry, repository) = host_repo.split_once('/').ok_or_else(|| CliError::Cli {
-            detail: format!(
-                "--to registry:<host>/<repo>:<tag> — missing /repository in {raw:?}"
-            ),
+            detail: format!("--to registry:<host>/<repo>:<tag> — missing /repository in {raw:?}"),
         })?;
         if registry.is_empty() || repository.is_empty() {
             return Err(CliError::Cli {
-                detail: format!("--to registry:<host>/<repo>:<tag> — host or repo empty in {raw:?}"),
+                detail: format!(
+                    "--to registry:<host>/<repo>:<tag> — host or repo empty in {raw:?}"
+                ),
             });
         }
         return Ok(ParsedSink::Registry {
@@ -112,11 +107,7 @@ pub fn parse_sink_uri(raw: &str) -> Result<ParsedSink, CliError> {
 }
 
 /// Run the publish subcommand.
-pub fn run(
-    image_dir: &Path,
-    sink_uri: &str,
-    auth: AuthMode,
-) -> Result<PublishOutcome, CliError> {
+pub fn run(image_dir: &Path, sink_uri: &str, auth: AuthMode) -> Result<PublishOutcome, CliError> {
     let parsed = parse_sink_uri(sink_uri)?;
     let image = ImageDir::open(image_dir).map_err(oci_publish::PublishError::from)?;
     let sink = match parsed {

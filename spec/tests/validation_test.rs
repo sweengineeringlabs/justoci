@@ -62,7 +62,10 @@ fn test_malformed_id_rejected() {
     // Bug it catches: an id parser that accepted "no colon" as a
     // valid id would break OCI registry pushes downstream where
     // name+tag are required.
-    let bad = VALID_SPEC.replace(r#"id           = "valid:1.0.0""#, r#"id           = "no-colon-here""#);
+    let bad = VALID_SPEC.replace(
+        r#"id           = "valid:1.0.0""#,
+        r#"id           = "no-colon-here""#,
+    );
     let (text, dir) = staged(&bad, &["blob.bin"]);
     let err = parse_and_validate_str(&text, dir).expect_err("must reject");
     assert!(matches!(err, SpecError::MalformedId { .. }));
@@ -74,7 +77,10 @@ fn test_uppercase_name_in_id_rejected() {
     // Bug it catches: a regex that accepted [a-zA-Z] for the name
     // body would push artifacts that some registries reject at
     // upload time.
-    let bad = VALID_SPEC.replace(r#"id           = "valid:1.0.0""#, r#"id           = "VALID:1.0.0""#);
+    let bad = VALID_SPEC.replace(
+        r#"id           = "valid:1.0.0""#,
+        r#"id           = "VALID:1.0.0""#,
+    );
     let (text, dir) = staged(&bad, &["blob.bin"]);
     let err = parse_and_validate_str(&text, dir).expect_err("must reject");
     assert!(matches!(err, SpecError::MalformedId { .. }));
@@ -82,7 +88,10 @@ fn test_uppercase_name_in_id_rejected() {
 
 #[test]
 fn test_unknown_kind_rejected() {
-    let bad = VALID_SPEC.replace(r#"kind         = "raw_image""#, r#"kind         = "container_image""#);
+    let bad = VALID_SPEC.replace(
+        r#"kind         = "raw_image""#,
+        r#"kind         = "container_image""#,
+    );
     let (text, dir) = staged(&bad, &["blob.bin"]);
     let err = parse_and_validate_str(&text, dir).expect_err("must reject");
     assert!(matches!(err, SpecError::UnknownKind { .. }));
@@ -91,8 +100,7 @@ fn test_unknown_kind_rejected() {
 #[test]
 fn test_raw_image_with_two_layers_rejected() {
     // raw_image must be exactly 1 layer.
-    let bad = format!(
-        r#"
+    let bad = r#"
 spec_version = "0"
 id           = "valid:1.0.0"
 kind         = "raw_image"
@@ -105,7 +113,7 @@ media_type = "application/vnd.firmware.raw+binary"
 source     = "blob2.bin"
 media_type = "application/vnd.firmware.raw+binary"
 "#
-    );
+    .to_string();
     let (text, dir) = staged(&bad, &["blob.bin", "blob2.bin"]);
     let err = parse_and_validate_str(&text, dir).expect_err("must reject");
     assert!(matches!(
@@ -285,8 +293,7 @@ media_type = "application/octet-stream"
 
 #[test]
 fn test_slsa_level_out_of_range_rejected() {
-    let bad = format!(
-        r#"
+    let bad = r#"
 spec_version = "0"
 id           = "x:1"
 kind         = "raw_image"
@@ -298,19 +305,15 @@ media_type = "application/octet-stream"
 [attestation.slsa]
 level = 7
 "#
-    );
+    .to_string();
     let (text, dir) = staged(&bad, &["blob.bin"]);
     let err = parse_and_validate_str(&text, dir).expect_err("must reject");
-    assert!(matches!(
-        err,
-        SpecError::SlsaLevelOutOfRange { got: 7 }
-    ));
+    assert!(matches!(err, SpecError::SlsaLevelOutOfRange { got: 7 }));
 }
 
 #[test]
 fn test_unknown_sbom_format_rejected() {
-    let bad = format!(
-        r#"
+    let bad = r#"
 spec_version = "0"
 id           = "x:1"
 kind         = "raw_image"
@@ -322,7 +325,7 @@ media_type = "application/octet-stream"
 [attestation.sbom]
 format = "swid"
 "#
-    );
+    .to_string();
     let (text, dir) = staged(&bad, &["blob.bin"]);
     let err = parse_and_validate_str(&text, dir).expect_err("must reject");
     assert!(matches!(err, SpecError::UnknownSbomFormat { .. }));
@@ -332,8 +335,7 @@ format = "swid"
 fn test_cosign_key_without_identity_rejected() {
     // cosign-key without a key path is unusable — surface it now,
     // not at sign time.
-    let bad = format!(
-        r#"
+    let bad = r#"
 spec_version = "0"
 id           = "x:1"
 kind         = "raw_image"
@@ -345,7 +347,7 @@ media_type = "application/octet-stream"
 [attestation.sign]
 kind = "cosign-key"
 "#
-    );
+    .to_string();
     let (text, dir) = staged(&bad, &["blob.bin"]);
     let err = parse_and_validate_str(&text, dir).expect_err("must reject");
     assert!(matches!(err, SpecError::MissingSigningKeyPath));
@@ -354,8 +356,7 @@ kind = "cosign-key"
 #[test]
 fn test_invalid_created_annotation_rejected() {
     // Reserved OCI annotation must be RFC3339.
-    let bad = format!(
-        r#"
+    let bad = r#"
 spec_version = "0"
 id           = "x:1"
 kind         = "raw_image"
@@ -367,13 +368,10 @@ media_type = "application/octet-stream"
 [annotations]
 "org.opencontainers.image.created" = "yesterday"
 "#
-    );
+    .to_string();
     let (text, dir) = staged(&bad, &["blob.bin"]);
     let err = parse_and_validate_str(&text, dir).expect_err("must reject");
-    assert!(matches!(
-        err,
-        SpecError::InvalidReservedAnnotation { .. }
-    ));
+    assert!(matches!(err, SpecError::InvalidReservedAnnotation { .. }));
 }
 
 #[test]
@@ -382,10 +380,7 @@ fn test_default_attestation_when_block_omitted() {
     // on-by-default posture (SLSA L2 + CycloneDX + cosign-keyless).
     let (text, dir) = staged(VALID_SPEC, &["blob.bin"]);
     let spec = parse_and_validate_str(&text, dir).expect("parses").spec;
-    assert!(matches!(
-        spec.attestation.slsa.level,
-        spec::SlsaLevel::L2
-    ));
+    assert!(matches!(spec.attestation.slsa.level, spec::SlsaLevel::L2));
     assert!(matches!(
         spec.attestation.sbom.format,
         spec::SbomFormat::CycloneDx

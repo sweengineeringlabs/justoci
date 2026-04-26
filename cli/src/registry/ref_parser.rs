@@ -109,11 +109,13 @@ pub fn parse_registry_ref(raw: &str) -> Result<RegistryRef, RegistryPullError> {
             // if it appears AFTER the FIRST `/`. If the only `:` in
             // the string is in the host part (no `/` after it), there
             // is no tag and the ref is malformed.
-            let first_slash = raw.find('/').ok_or_else(|| RegistryPullError::MalformedRef {
-                got: raw.to_string(),
-                reason: "no '/' separator — a ref must be host[:port]/repo[:tag|@digest]"
-                    .to_string(),
-            })?;
+            let first_slash = raw
+                .find('/')
+                .ok_or_else(|| RegistryPullError::MalformedRef {
+                    got: raw.to_string(),
+                    reason: "no '/' separator — a ref must be host[:port]/repo[:tag|@digest]"
+                        .to_string(),
+                })?;
             let after_slash = &raw[first_slash..];
             let last_colon_after_slash = after_slash.rfind(':');
             match last_colon_after_slash {
@@ -144,10 +146,12 @@ pub fn parse_registry_ref(raw: &str) -> Result<RegistryRef, RegistryPullError> {
 
     // `head` is now `host[:port]/repo[/sub-repo...]`.
     // Split into host vs repo on the FIRST `/`.
-    let first_slash = head.find('/').ok_or_else(|| RegistryPullError::MalformedRef {
-        got: raw.to_string(),
-        reason: "missing '/' between host and repository".to_string(),
-    })?;
+    let first_slash = head
+        .find('/')
+        .ok_or_else(|| RegistryPullError::MalformedRef {
+            got: raw.to_string(),
+            reason: "missing '/' between host and repository".to_string(),
+        })?;
     let host = &head[..first_slash];
     let repository = &head[first_slash + 1..];
 
@@ -200,10 +204,12 @@ fn validate_tag_format(tag: &str, raw: &str) -> Result<(), RegistryPullError> {
 /// `sha256:<64-lowercase-hex>` — the only digest algorithm v0
 /// supports across the build / publish / verify surface.
 fn validate_digest_format(digest: &str, raw: &str) -> Result<(), RegistryPullError> {
-    let (algo, hex) = digest.split_once(':').ok_or_else(|| RegistryPullError::MalformedRef {
-        got: raw.to_string(),
-        reason: "digest missing ':' separator (expected sha256:<hex>)".to_string(),
-    })?;
+    let (algo, hex) = digest
+        .split_once(':')
+        .ok_or_else(|| RegistryPullError::MalformedRef {
+            got: raw.to_string(),
+            reason: "digest missing ':' separator (expected sha256:<hex>)".to_string(),
+        })?;
     if algo != "sha256" {
         return Err(RegistryPullError::MalformedRef {
             got: raw.to_string(),
@@ -216,7 +222,10 @@ fn validate_digest_format(digest: &str, raw: &str) -> Result<(), RegistryPullErr
             reason: format!("sha256 hex must be 64 chars, got {}", hex.len()),
         });
     }
-    if !hex.chars().all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c)) {
+    if !hex
+        .chars()
+        .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
+    {
         return Err(RegistryPullError::MalformedRef {
             got: raw.to_string(),
             reason: "sha256 hex must be lowercase 0-9a-f".to_string(),
@@ -419,7 +428,9 @@ mod tests {
         let err = parse_registry_ref("myreg/foo:v1").unwrap_err();
         match err {
             RegistryPullError::MalformedRef { reason, .. } => {
-                assert!(reason.contains("registry") || reason.contains("DNS") || reason.contains("dns"));
+                assert!(
+                    reason.contains("registry") || reason.contains("DNS") || reason.contains("dns")
+                );
             }
             other => panic!("expected MalformedRef, got {other:?}"),
         }

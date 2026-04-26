@@ -43,9 +43,7 @@ pub fn publish(image: &ImageDir, sink: &PublishSink) -> Result<PublishOutcome, P
 fn check_registry_field(name: &str, value: &str) -> Result<(), PublishError> {
     if value.is_empty() {
         return Err(PublishError::MalformedImageDir {
-            detail: format!(
-                "PublishSink::Registry.{name} is empty — expected a non-empty value"
-            ),
+            detail: format!("PublishSink::Registry.{name} is empty — expected a non-empty value"),
         });
     }
     if value.contains(char::is_whitespace) {

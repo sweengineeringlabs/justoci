@@ -53,10 +53,7 @@ use tar::{Builder, EntryType, Header};
 /// up to a few GB on a build host with adequate RAM); streaming
 /// straight to the CAS lands in a follow-up if a real workload
 /// exceeds that.
-pub fn build_deterministic_tar(
-    entries: &[LayerFile],
-    spec_dir: &Path,
-) -> io::Result<Vec<u8>> {
+pub fn build_deterministic_tar(entries: &[LayerFile], spec_dir: &Path) -> io::Result<Vec<u8>> {
     // Walk every entry into a flat list of `(tar_path, mode, source)`
     // triples first, then sort by tar_path. This is what makes the
     // build order-independent: spec authors can rearrange
@@ -102,10 +99,7 @@ pub fn build_deterministic_tar(
                     if !metadata.is_file() {
                         return Err(io::Error::new(
                             io::ErrorKind::InvalidInput,
-                            format!(
-                                "tar source {} is not a regular file",
-                                source.display()
-                            ),
+                            format!("tar source {} is not a regular file", source.display()),
                         ));
                     }
                     let mut header = Header::new_ustar();
@@ -161,8 +155,10 @@ fn flatten_entry(
 
         // Read children, sort lexicographically by name (NOT by
         // OS-dependent readdir order), then recurse.
-        let mut children: Vec<PathBuf> =
-            fs::read_dir(source)?.filter_map(Result::ok).map(|d| d.path()).collect();
+        let mut children: Vec<PathBuf> = fs::read_dir(source)?
+            .filter_map(Result::ok)
+            .map(|d| d.path())
+            .collect();
         children.sort();
         for child in children {
             let name = child

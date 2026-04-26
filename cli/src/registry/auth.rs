@@ -95,9 +95,10 @@ pub(super) fn resolve_static_auth_header(
             }
         }
     };
-    let mut hv = HeaderValue::from_str(&header_value).map_err(|source| RegistryPullError::Auth {
-        source: Box::new(source),
-    })?;
+    let mut hv =
+        HeaderValue::from_str(&header_value).map_err(|source| RegistryPullError::Auth {
+            source: Box::new(source),
+        })?;
     hv.set_sensitive(true);
     Ok(hv)
 }
@@ -149,7 +150,7 @@ pub(super) fn parse_bearer_challenge(header: &str) -> Option<HashMap<String, Str
         if let Some(&c) = chars.peek() {
             if c == '"' {
                 chars.next();
-                while let Some(c2) = chars.next() {
+                for c2 in chars.by_ref() {
                     if c2 == '"' {
                         break;
                     }
@@ -180,9 +181,11 @@ pub(super) fn fetch_bearer_token(
     challenge: &HashMap<String, String>,
     static_auth: Option<&HeaderValue>,
 ) -> Result<HeaderValue, RegistryPullError> {
-    let realm = challenge.get("realm").ok_or_else(|| RegistryPullError::Auth {
-        source: "WWW-Authenticate Bearer challenge missing realm parameter".into(),
-    })?;
+    let realm = challenge
+        .get("realm")
+        .ok_or_else(|| RegistryPullError::Auth {
+            source: "WWW-Authenticate Bearer challenge missing realm parameter".into(),
+        })?;
     // Build the token URL: `<realm>?service=<service>&scope=<scope>`.
     let mut url = realm.clone();
     let mut sep = if url.contains('?') { '&' } else { '?' };
@@ -293,7 +296,15 @@ fn urlencode(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for b in s.bytes() {
         let c = b as char;
-        if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '~' || c == ',' || c == '/' || c == ':' {
+        if c.is_ascii_alphanumeric()
+            || c == '-'
+            || c == '_'
+            || c == '.'
+            || c == '~'
+            || c == ','
+            || c == '/'
+            || c == ':'
+        {
             out.push(c);
         } else {
             out.push_str(&format!("%{b:02X}"));
@@ -305,8 +316,7 @@ fn urlencode(s: &str) -> String {
 /// Minimal base64 encoder for HTTP Basic auth. Mirrors the
 /// publish-side helper — same alphabet + padding rules.
 fn base64_encode(input: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
     for chunk in input.chunks(3) {
         let b0 = chunk[0];
@@ -351,8 +361,14 @@ mod tests {
             "Bearer realm=\"https://auth.docker.io/token\",service=\"registry.docker.io\",scope=\"repository:library/alpine:pull\"",
         )
         .unwrap();
-        assert_eq!(h.get("realm").map(String::as_str), Some("https://auth.docker.io/token"));
-        assert_eq!(h.get("service").map(String::as_str), Some("registry.docker.io"));
+        assert_eq!(
+            h.get("realm").map(String::as_str),
+            Some("https://auth.docker.io/token")
+        );
+        assert_eq!(
+            h.get("service").map(String::as_str),
+            Some("registry.docker.io")
+        );
         assert_eq!(
             h.get("scope").map(String::as_str),
             Some("repository:library/alpine:pull")

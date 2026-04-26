@@ -16,8 +16,8 @@
 //! success, so `<output_dir>` only appears when the build itself
 //! succeeded. If attest then fails, `<output_dir>` survives (build
 //! was successful — its atomicity contract is preserved) but
-//! `index.json` may have been partially updated; we use a temp-file
-//! + rename for the index update so the index is either
+//! `index.json` may have been partially updated; we use a tempfile-
+//! then-rename for the index update so the index is either
 //! pre-attestation or fully-post-attestation, never half-written.
 //!
 //! ## Error-class mapping
@@ -54,11 +54,7 @@ pub struct AttestationSummary {
 /// want to suppress secondary stdout — but stdout itself stays
 /// machine-parseable; the quiet flag only governs human-eyes
 /// preamble lines.
-pub fn run(
-    spec_path: &Path,
-    output_dir: &Path,
-    no_attest: bool,
-) -> Result<BuildSummary, CliError> {
+pub fn run(spec_path: &Path, output_dir: &Path, no_attest: bool) -> Result<BuildSummary, CliError> {
     tracing::debug!(
         spec = %spec_path.display(),
         output = %output_dir.display(),
@@ -122,7 +118,10 @@ pub fn run(
         Some(AttestationSummary {
             slsa_digest: outputs.slsa.as_ref().map(|s| s.blob_digest.to_string()),
             sbom_digest: outputs.sbom.as_ref().map(|s| s.blob_digest.to_string()),
-            signature_digest: outputs.signature.as_ref().map(|s| s.bundle_digest.to_string()),
+            signature_digest: outputs
+                .signature
+                .as_ref()
+                .map(|s| s.bundle_digest.to_string()),
         })
     };
 

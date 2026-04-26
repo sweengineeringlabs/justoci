@@ -106,36 +106,23 @@ pub fn run(
 /// consulted on the registry-ref branch). Kept so existing
 /// integration tests under `tests/` that drive the library
 /// directly don't have to import the full auth surface.
-pub fn run_path(
-    image_dir: &Path,
-    policy_path: Option<&Path>,
-) -> Result<VerifyReport, CliError> {
+pub fn run_path(image_dir: &Path, policy_path: Option<&Path>) -> Result<VerifyReport, CliError> {
     let s = image_dir
         .to_str()
         .ok_or_else(|| CliError::Cli {
-            detail: format!(
-                "verify: path is not valid UTF-8: {}",
-                image_dir.display()
-            ),
+            detail: format!("verify: path is not valid UTF-8: {}", image_dir.display()),
         })?
         .to_string();
     run(&s, policy_path, VerifyAuthMode::Anonymous)
 }
 
-fn run_local(
-    image_dir: &Path,
-    policy: Option<&Policy>,
-) -> Result<VerifyReport, CliError> {
+fn run_local(image_dir: &Path, policy: Option<&Policy>) -> Result<VerifyReport, CliError> {
     let invoker = RealCosignVerifyInvoker::new();
     let report = verify(image_dir, policy, &invoker)?;
     Ok(report)
 }
 
-fn pull_for_verify(
-    reference: &str,
-    auth: &VerifyAuthMode,
-    dest: &Path,
-) -> Result<(), CliError> {
+fn pull_for_verify(reference: &str, auth: &VerifyAuthMode, dest: &Path) -> Result<(), CliError> {
     match auth {
         VerifyAuthMode::Anonymous => {
             pull_anonymous_into_image_dir(reference, dest)?;
@@ -172,7 +159,9 @@ mod tests {
         match err {
             CliError::Verify(_) => { /* expected: layout-side error */ }
             CliError::RegistryPull(_) => {
-                panic!("verify with an existing path must NOT route through the registry-pull branch")
+                panic!(
+                    "verify with an existing path must NOT route through the registry-pull branch"
+                )
             }
             other => panic!("unexpected error variant: {other:?}"),
         }
@@ -188,8 +177,12 @@ mod tests {
     fn test_run_nonexistent_path_routes_to_registry_pull_branch() {
         // Use a string that has no `/` — guaranteed to fail the
         // ref parser, proving the routing happened.
-        let err = run("definitely-not-a-real-ref-or-path", None, VerifyAuthMode::Anonymous)
-            .unwrap_err();
+        let err = run(
+            "definitely-not-a-real-ref-or-path",
+            None,
+            VerifyAuthMode::Anonymous,
+        )
+        .unwrap_err();
         match err {
             CliError::RegistryPull(_) => { /* expected: ref parser rejected */ }
             other => panic!("expected CliError::RegistryPull, got {other:?}"),

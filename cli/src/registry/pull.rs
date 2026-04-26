@@ -132,10 +132,7 @@ pub fn pull_into_image_dir(
 /// Anonymous variant — equivalent to `pull_into_image_dir` with
 /// auth resolution skipped. Useful for public read-only registries
 /// where `RegistryAuth::FromEnv` would error on missing creds.
-pub fn pull_anonymous_into_image_dir(
-    ref_str: &str,
-    dest: &Path,
-) -> Result<(), RegistryPullError> {
+pub fn pull_anonymous_into_image_dir(ref_str: &str, dest: &Path) -> Result<(), RegistryPullError> {
     let parsed = parse_registry_ref(ref_str)?;
     let ctx = WireContext::new_anonymous(&parsed)?;
     execute_pull(&ctx, &parsed, dest)
@@ -186,7 +183,11 @@ impl WireContext {
         parsed: &RegistryRef,
         static_auth: Option<HeaderValue>,
     ) -> Result<Self, RegistryPullError> {
-        let scheme = if env_allows_insecure() { "http" } else { "https" };
+        let scheme = if env_allows_insecure() {
+            "http"
+        } else {
+            "https"
+        };
         let base_url = format!("{scheme}://{}", parsed.host);
         let client = ClientBuilder::new()
             .timeout(REQUEST_TIMEOUT)
@@ -196,7 +197,9 @@ impl WireContext {
             // safer.
             .redirect(reqwest::redirect::Policy::limited(5))
             .build()
-            .map_err(|e| RegistryPullError::Auth { source: Box::new(e) })?;
+            .map_err(|e| RegistryPullError::Auth {
+                source: Box::new(e),
+            })?;
         Ok(WireContext {
             client,
             base_url,
@@ -208,7 +211,9 @@ impl WireContext {
 }
 
 fn env_allows_insecure() -> bool {
-    std::env::var(ENV_ALLOW_INSECURE).map(|v| v == "1").unwrap_or(false)
+    std::env::var(ENV_ALLOW_INSECURE)
+        .map(|v| v == "1")
+        .unwrap_or(false)
 }
 
 fn execute_pull(
@@ -252,7 +257,11 @@ fn execute_pull(
     // Stage the manifest blob to disk before we trust its config /
     // layer descriptors. Once on disk, the rest of the pull treats
     // it as the authoritative descriptor source.
-    write_blob_atomically(&blobs_dir, &primary_manifest_digest, &primary_manifest_bytes)?;
+    write_blob_atomically(
+        &blobs_dir,
+        &primary_manifest_digest,
+        &primary_manifest_bytes,
+    )?;
 
     // Parse the manifest to discover the config + layer descriptors
     // we need to pull next.
@@ -312,17 +321,15 @@ fn execute_pull(
         }
         for (i, layer) in ref_manifest.layers.iter().enumerate() {
             if seen_blobs.insert(layer.digest.clone()) {
-                pull_blob_streamed(ctx, &blobs_dir, &layer.digest).map_err(|e| {
-                    match e {
-                        RegistryPullError::DigestMismatch { expected, got, .. } => {
-                            RegistryPullError::DigestMismatch {
-                                expected,
-                                got,
-                                blob: format!("referrer {} layer[{i}]", ref_desc.digest),
-                            }
+                pull_blob_streamed(ctx, &blobs_dir, &layer.digest).map_err(|e| match e {
+                    RegistryPullError::DigestMismatch { expected, got, .. } => {
+                        RegistryPullError::DigestMismatch {
+                            expected,
+                            got,
+                            blob: format!("referrer {} layer[{i}]", ref_desc.digest),
                         }
-                        other => other,
                     }
+                    other => other,
                 })?;
             }
         }
@@ -481,10 +488,7 @@ fn pull_blob_streamed(
         return Ok(());
     }
 
-    let url = format!(
-        "{}/v2/{}/blobs/{}",
-        ctx.base_url, ctx.repository, digest
-    );
+    let url = format!("{}/v2/{}/blobs/{}", ctx.base_url, ctx.repository, digest);
     let resp = send_with_retry(ctx, &url, &HeaderMap::new()).map_err(|e| match e {
         // Re-tag the error so the operator sees "blob X failed"
         // rather than "manifest URL".
@@ -598,10 +602,8 @@ fn write_oci_layout_marker(dest: &Path) -> Result<(), RegistryPullError> {
     if p.is_file() {
         return Ok(());
     }
-    fs::write(&p, br#"{"imageLayoutVersion":"1.0.0"}"#).map_err(|source| RegistryPullError::Io {
-        path: p,
-        source,
-    })
+    fs::write(&p, br#"{"imageLayoutVersion":"1.0.0"}"#)
+        .map_err(|source| RegistryPullError::Io { path: p, source })
 }
 
 /// Compose the local `index.json`. The primary manifest descriptor
@@ -770,11 +772,12 @@ fn read_body_capped(resp: Response) -> Vec<u8> {
 }
 
 fn blob_path_for_digest(blobs_dir: &Path, digest: &str) -> Result<PathBuf, RegistryPullError> {
-    let (algo, hex) = digest
-        .split_once(':')
-        .ok_or_else(|| RegistryPullError::MalformedManifest {
-            detail: format!("descriptor digest {digest:?} missing ':' separator"),
-        })?;
+    let (algo, hex) =
+        digest
+            .split_once(':')
+            .ok_or_else(|| RegistryPullError::MalformedManifest {
+                detail: format!("descriptor digest {digest:?} missing ':' separator"),
+            })?;
     if algo != "sha256" {
         return Err(RegistryPullError::MalformedManifest {
             detail: format!("only sha256 digests are supported, got {algo:?}"),
@@ -785,7 +788,10 @@ fn blob_path_for_digest(blobs_dir: &Path, digest: &str) -> Result<PathBuf, Regis
             detail: format!("sha256 hex must be 64 chars, got {}", hex.len()),
         });
     }
-    if !hex.chars().all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c)) {
+    if !hex
+        .chars()
+        .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
+    {
         return Err(RegistryPullError::MalformedManifest {
             detail: format!("sha256 hex must be lowercase 0-9a-f, got {hex:?}"),
         });
@@ -845,7 +851,9 @@ mod tests {
     fn test_hex_sha256_is_lowercase_64_chars() {
         let h = hex_sha256(b"hello");
         assert_eq!(h.len(), 64);
-        assert!(h.chars().all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c)));
+        assert!(h
+            .chars()
+            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c)));
         // Reference: `printf 'hello' | sha256sum`.
         assert_eq!(
             h,

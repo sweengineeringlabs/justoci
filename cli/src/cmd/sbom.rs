@@ -135,11 +135,9 @@ fn run_spec_mode(spec_path: &Path, format: SbomFormat) -> Result<Vec<u8>, CliErr
         SbomFormat::CycloneDx => emit_cyclonedx(&built, scope, &mem)?,
         SbomFormat::Spdx => emit_spdx(&built, scope, &mem)?,
     };
-    let bytes = mem
-        .get(&sbom.blob_digest)
-        .map_err(|e| CliError::Cli {
-            detail: format!("internal: SBOM bytes not retrievable from MemCas: {e}"),
-        })?;
+    let bytes = mem.get(&sbom.blob_digest).map_err(|e| CliError::Cli {
+        detail: format!("internal: SBOM bytes not retrievable from MemCas: {e}"),
+    })?;
     Ok(bytes)
 }
 
@@ -164,7 +162,7 @@ fn run_image_mode(image_dir: &Path) -> Result<Vec<u8>, CliError> {
         let artifact_type = v
             .get("artifactType")
             .and_then(|x| x.as_str())
-            .or_else(|| ref_desc.artifact_type.as_deref())
+            .or(ref_desc.artifact_type.as_deref())
             .unwrap_or("");
         let is_sbom = artifact_type.contains("cyclonedx") || artifact_type.contains("spdx");
         if !is_sbom {
@@ -176,16 +174,16 @@ fn run_image_mode(image_dir: &Path) -> Result<Vec<u8>, CliError> {
             .and_then(|x| x.as_array())
             .and_then(|a| a.first())
             .ok_or_else(|| CliError::Cli {
-                detail: format!(
-                    "referrer manifest {} has no layers[]",
-                    ref_desc.digest
-                ),
+                detail: format!("referrer manifest {} has no layers[]", ref_desc.digest),
             })?;
         let layer_digest = layer
             .get("digest")
             .and_then(|x| x.as_str())
             .ok_or_else(|| CliError::Cli {
-                detail: format!("referrer manifest {} layer[0] missing digest", ref_desc.digest),
+                detail: format!(
+                    "referrer manifest {} layer[0] missing digest",
+                    ref_desc.digest
+                ),
             })?;
         let layer_path = image
             .blob_path(layer_digest)
@@ -222,7 +220,10 @@ mod tests {
 
     #[test]
     fn test_parse_format_accepts_cyclonedx() {
-        assert_eq!(SbomFormat::parse("cyclonedx").unwrap(), SbomFormat::CycloneDx);
+        assert_eq!(
+            SbomFormat::parse("cyclonedx").unwrap(),
+            SbomFormat::CycloneDx
+        );
     }
 
     #[test]

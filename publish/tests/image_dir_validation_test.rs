@@ -109,10 +109,11 @@ fn test_open_rejects_unsupported_layout_version() {
     )
     .unwrap();
 
-    let err = ImageDir::open(dir.path())
-        .expect_err("imageLayoutVersion 2.0.0 must error");
+    let err = ImageDir::open(dir.path()).expect_err("imageLayoutVersion 2.0.0 must error");
     match err {
-        ImageDirError::UnsupportedLayoutVersion { found, expected, .. } => {
+        ImageDirError::UnsupportedLayoutVersion {
+            found, expected, ..
+        } => {
             assert_eq!(found, "2.0.0");
             assert_eq!(expected, "1.0.0");
         }
@@ -202,8 +203,7 @@ fn test_open_rejects_index_with_multiple_primary_manifests() {
     .unwrap();
     let _ = layout; // we don't need the layout digests after the rewrite
 
-    let err =
-        ImageDir::open(dir.path()).expect_err("multiple primaries must error");
+    let err = ImageDir::open(dir.path()).expect_err("multiple primaries must error");
     match err {
         ImageDirError::MultiplePrimaryManifests { count, .. } => {
             assert_eq!(count, 2);

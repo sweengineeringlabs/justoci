@@ -100,10 +100,7 @@ fn spec_to_json(spec: &Spec) -> Value {
         obj.insert("annotations".into(), annotations_to_json(&spec.annotations));
     }
 
-    obj.insert(
-        "attestation".into(),
-        attestation_to_json(&spec.attestation),
-    );
+    obj.insert("attestation".into(), attestation_to_json(&spec.attestation));
 
     Value::Object(obj)
 }
@@ -136,20 +133,14 @@ fn layer_to_json(l: &Layer) -> Value {
         LayerSource::Blob { path } => {
             // Use forward slashes regardless of host OS so the same
             // spec file produces the same hash on Windows and Linux.
-            o.insert(
-                "source".into(),
-                Value::String(normalise_path(path)),
-            );
+            o.insert("source".into(), Value::String(normalise_path(path)));
         }
         LayerSource::Files { entries } => {
             let arr: Vec<Value> = entries
                 .iter()
                 .map(|f| {
                     let mut fo = Map::new();
-                    fo.insert(
-                        "source".into(),
-                        Value::String(normalise_path(&f.source)),
-                    );
+                    fo.insert("source".into(), Value::String(normalise_path(&f.source)));
                     fo.insert("dest".into(), Value::String(f.dest.clone()));
                     fo.insert(
                         "mode".into(),
@@ -223,4 +214,3 @@ fn normalise_path(p: &std::path::Path) -> String {
     // platform-independent.
     p.to_string_lossy().replace('\\', "/")
 }
-

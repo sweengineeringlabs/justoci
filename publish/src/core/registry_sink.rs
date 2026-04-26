@@ -95,7 +95,11 @@ pub fn publish_registry(
     tag: &str,
     auth: Option<RegistryAuth>,
 ) -> Result<PublishOutcome, PublishError> {
-    let scheme = if env_allows_insecure() { "http" } else { "https" };
+    let scheme = if env_allows_insecure() {
+        "http"
+    } else {
+        "https"
+    };
     let base_url = format!("{scheme}://{registry}");
     let client = build_client()?;
     let auth_header = resolve_auth(auth)?;
@@ -256,7 +260,8 @@ fn push_blob_with_skip(
 
     // PUT the blob bytes.
     let blob_path = image.blob_path(digest).map_err(PublishError::from)?;
-    let bytes_uploaded = put_blob_monolithic(wire.client, &location, wire.auth, &blob_path, digest)?;
+    let bytes_uploaded =
+        put_blob_monolithic(wire.client, &location, wire.auth, &blob_path, digest)?;
 
     outcome.digests_pushed.push(digest.to_string());
     outcome.bytes_uploaded += bytes_uploaded;
@@ -292,9 +297,10 @@ fn push_manifest_with_skip(
     }
 
     let manifest_path = image.blob_path(digest).map_err(PublishError::from)?;
-    let manifest_bytes = fs::read(&manifest_path).map_err(|source| PublishError::ManifestUpload {
-        source: Box::new(source),
-    })?;
+    let manifest_bytes =
+        fs::read(&manifest_path).map_err(|source| PublishError::ManifestUpload {
+            source: Box::new(source),
+        })?;
 
     let put_url = format!(
         "{}/v2/{}/manifests/{target}",
@@ -348,8 +354,7 @@ fn head_manifest(
 ) -> Result<StatusCode, PublishError> {
     let mut last_err: Option<PublishError> = None;
     for attempt in 0..=MAX_RETRIES {
-        let req = apply_auth(client.head(url), auth)
-            .header("Accept", MEDIA_TYPE_OCI_MANIFEST);
+        let req = apply_auth(client.head(url), auth).header("Accept", MEDIA_TYPE_OCI_MANIFEST);
         match req.send() {
             Ok(resp) => {
                 let status = resp.status();
@@ -383,8 +388,7 @@ fn init_blob_upload(
     digest: &str,
 ) -> Result<String, PublishError> {
     for attempt in 0..=MAX_RETRIES {
-        let req = apply_auth(client.post(url), auth)
-            .header(CONTENT_LENGTH, "0");
+        let req = apply_auth(client.post(url), auth).header(CONTENT_LENGTH, "0");
         match req.send() {
             Ok(resp) => {
                 let status = resp.status();
@@ -545,9 +549,7 @@ fn sleep_backoff(attempt: u32) {
                                 // on a programming error that lets
                                 // `attempt` exceed MAX_RETRIES.
     let factor = 1u64.checked_shl(shift).unwrap_or(u64::MAX);
-    let ms = 200u64
-        .saturating_mul(factor)
-        .min(MAX_RETRY_BACKOFF_MS);
+    let ms = 200u64.saturating_mul(factor).min(MAX_RETRY_BACKOFF_MS);
     std::thread::sleep(Duration::from_millis(ms));
 }
 
@@ -650,8 +652,7 @@ impl std::error::Error for IoLikeError {}
 /// alphabet without padding control — Basic auth requires the
 /// canonical alphabet WITH padding, which this returns.
 fn base64_encode(input: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
     for chunk in input.chunks(3) {
         let b0 = chunk[0];

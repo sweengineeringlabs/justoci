@@ -64,9 +64,7 @@ pub fn publish_http(image: &ImageDir, dest_dir: &Path) -> Result<PublishOutcome,
     // equal target is a no-op. The OCI Image Layout file is small
     // (single JSON object, < 32 bytes) so we don't bother with a
     // streaming hash; the test suite pins the byte-equality.
-    let layout_bytes = image
-        .read_oci_layout_bytes()
-        .map_err(PublishError::from)?;
+    let layout_bytes = image.read_oci_layout_bytes().map_err(PublishError::from)?;
     let layout_path = dest_dir.join(OCI_LAYOUT_FILE);
     write_if_changed(&layout_path, &layout_bytes)?;
 

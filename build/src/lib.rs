@@ -19,7 +19,6 @@ pub use api::build_error::BuildError;
 pub use api::build_output::BuildOutput;
 pub use api::oci_manifest::{
     OciDescriptor, OciImageConfig, OciIndex, OciLayout, OciManifest, OciRuntimeConfig,
-    MEDIA_TYPE_OCI_CONFIG, MEDIA_TYPE_OCI_INDEX, MEDIA_TYPE_OCI_MANIFEST,
-    OCI_LAYOUT_VERSION,
+    MEDIA_TYPE_OCI_CONFIG, MEDIA_TYPE_OCI_INDEX, MEDIA_TYPE_OCI_MANIFEST, OCI_LAYOUT_VERSION,
 };
 pub use saf::build::build;

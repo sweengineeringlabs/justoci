@@ -111,7 +111,9 @@ fn test_signed_and_recorded_outcome_produces_signature_with_log_index() {
         log_index: 42,
     });
     let outputs = attest_with_invoker(&built, &cfg, &cas, &stub).expect("attest");
-    let sig = outputs.signature.expect("signed-and-recorded must produce signature");
+    let sig = outputs
+        .signature
+        .expect("signed-and-recorded must produce signature");
     assert_eq!(sig.rekor_log_index, 42);
     assert_eq!(sig.identity, "alice@example.com");
     // The bundle bytes must round-trip through the CAS.

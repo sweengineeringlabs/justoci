@@ -76,8 +76,7 @@ fn test_publish_registry_retry_only_uploads_blobs_not_yet_present() {
     // succeed for everything and 500 the PUT.
     let upload_url = format!("/v2/{repo}/blobs/uploads/sess");
     server.mock(|when, then| {
-        when.method(POST)
-            .path(format!("/v2/{repo}/blobs/uploads/"));
+        when.method(POST).path(format!("/v2/{repo}/blobs/uploads/"));
         then.status(202)
             .header("location", upload_url.clone())
             .body("");
@@ -99,17 +98,15 @@ fn test_publish_registry_retry_only_uploads_blobs_not_yet_present() {
         // httpmock's matchers compose by inclusion — we list each
         // succeeding digest explicitly so the catch-all 500 above
         // doesn't shadow these.
-        when.method(PUT).path(upload_url.clone()).query_param(
-            "digest",
-            succeed_digests[0].clone(),
-        );
+        when.method(PUT)
+            .path(upload_url.clone())
+            .query_param("digest", succeed_digests[0].clone());
         then.status(201).body("");
     });
     server.mock(|when, then| {
-        when.method(PUT).path(upload_url.clone()).query_param(
-            "digest",
-            succeed_digests[1].clone(),
-        );
+        when.method(PUT)
+            .path(upload_url.clone())
+            .query_param("digest", succeed_digests[1].clone());
         then.status(201).body("");
     });
 
@@ -156,8 +153,7 @@ fn test_publish_registry_retry_only_uploads_blobs_not_yet_present() {
         .iter()
         .map(|d| {
             server2.mock(|when, then| {
-                when.method(HEAD)
-                    .path(format!("/v2/{repo}/blobs/{d}"));
+                when.method(HEAD).path(format!("/v2/{repo}/blobs/{d}"));
                 then.status(200).header("content-length", "0");
             })
         })
@@ -168,8 +164,7 @@ fn test_publish_registry_retry_only_uploads_blobs_not_yet_present() {
         then.status(404);
     });
     let post_init = server2.mock(|when, then| {
-        when.method(POST)
-            .path(format!("/v2/{repo}/blobs/uploads/"));
+        when.method(POST).path(format!("/v2/{repo}/blobs/uploads/"));
         then.status(202)
             .header("location", upload_url.clone())
             .body("");

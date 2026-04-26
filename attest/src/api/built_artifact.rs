@@ -85,10 +85,7 @@ impl BuiltArtifact {
 #[derive(Debug, thiserror::Error)]
 pub enum BuiltArtifactError {
     #[error("layer count mismatch: spec declares {spec_layers} layers, build provided {provided} digests")]
-    LayerCountMismatch {
-        spec_layers: usize,
-        provided: usize,
-    },
+    LayerCountMismatch { spec_layers: usize, provided: usize },
 
     #[error("layer order mismatch: expected position {expected_position}, got {got_position}")]
     LayerOrderMismatch {

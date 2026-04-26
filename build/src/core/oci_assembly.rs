@@ -48,8 +48,7 @@ pub fn assemble_config_and_manifest(
 ) -> Result<AssembledManifest, BuildError> {
     // ── Image config blob ────────────────────────────────────────
     let config = build_image_config(spec);
-    let config_bytes =
-        serde_json::to_vec(&config).map_err(|source| BuildError::Json { source })?;
+    let config_bytes = serde_json::to_vec(&config).map_err(|source| BuildError::Json { source })?;
     let config_size = config_bytes.len() as u64;
     let config_digest = cas
         .put(&config_bytes)
@@ -121,8 +120,7 @@ pub fn build_image_config(spec: &Spec) -> OciImageConfig {
         cmd: vec![],
         labels: Default::default(),
     };
-    let mut extra: std::collections::BTreeMap<String, serde_json::Value> =
-        Default::default();
+    let mut extra: std::collections::BTreeMap<String, serde_json::Value> = Default::default();
 
     if let serde_json::Value::Object(map) = &spec.config.0 {
         for (k, v) in map.iter() {
@@ -192,10 +190,7 @@ fn string_array(v: &serde_json::Value) -> Vec<String> {
 /// validator already enforces this on the input `Spec`, but we re-
 /// check after layer assembly to defend against a future refactor
 /// that drops a layer between input and output.
-pub fn check_layer_count_post_assembly(
-    kind: Kind,
-    actual: usize,
-) -> Result<(), BuildError> {
+pub fn check_layer_count_post_assembly(kind: Kind, actual: usize) -> Result<(), BuildError> {
     let (expected, ok) = match kind {
         Kind::OciArtifact => (">=1", actual >= 1),
         Kind::VmImage => ("3", actual == 3),

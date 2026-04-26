@@ -7,6 +7,5 @@ pub mod slsa;
 // crate normally, not under #[cfg(test)]) can construct the stub
 // cosign invoker and inject scripted outcomes.
 pub use cosign::{
-    sign_with, CosignInvocation, CosignInvoker, CosignOutcome, RealCosignInvoker,
-    StubCosignInvoker,
+    sign_with, CosignInvocation, CosignInvoker, CosignOutcome, RealCosignInvoker, StubCosignInvoker,
 };

@@ -8,7 +8,7 @@
 mod common;
 
 use cas::FsCas;
-use spec::{AttestationConfig, SbomConfig, SbomFormat, SbomScope, SignKind};
+use spec::{AttestationConfig, SbomConfig, SbomFormat, SbomScope, SignConfig, SignKind};
 use tempfile::TempDir;
 
 use attest::core::cosign::{CosignOutcome, StubCosignInvoker};
@@ -23,12 +23,17 @@ fn test_attest_with_sbom_off_returns_none() {
     // We disable signing in this test (Off) so the test doesn't
     // depend on cosign being present — the focus is the SBOM=Off
     // branch.
-    let mut cfg = AttestationConfig::default();
-    cfg.sbom = SbomConfig {
-        format: SbomFormat::Off,
-        scope: SbomScope::Layers,
+    let cfg = AttestationConfig {
+        sbom: SbomConfig {
+            format: SbomFormat::Off,
+            scope: SbomScope::Layers,
+        },
+        sign: SignConfig {
+            kind: SignKind::Off,
+            ..SignConfig::default()
+        },
+        ..AttestationConfig::default()
     };
-    cfg.sign.kind = SignKind::Off;
 
     // No-op invoker — won't be called because sign.kind = Off.
     let invoker = StubCosignInvoker::new(CosignOutcome::CosignNotInstalled);

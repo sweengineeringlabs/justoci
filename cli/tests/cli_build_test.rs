@@ -37,7 +37,9 @@ fn test_build_no_attest_emits_oci_layout_with_manifest_digest_on_stdout() {
         .success()
         .stdout(predicate::str::contains("manifest_digest: sha256:"))
         .stdout(predicate::str::contains("spec_hash:       sha256:"))
-        .stdout(predicate::str::contains("attestation:     skipped: --no-attest"));
+        .stdout(predicate::str::contains(
+            "attestation:     skipped: --no-attest",
+        ));
 
     // OCI Image Layout invariants. If any of these is missing, the
     // build either failed silently or wrote a malformed layout —

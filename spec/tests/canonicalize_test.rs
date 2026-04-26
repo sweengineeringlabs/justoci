@@ -110,7 +110,10 @@ source     = "blob.bin"
 #[test]
 fn test_spec_hash_differs_when_id_changes() {
     let a = SPEC_A;
-    let b = SPEC_A.replace(r#"id           = "stable:1""#, r#"id           = "stable:2""#);
+    let b = SPEC_A.replace(
+        r#"id           = "stable:1""#,
+        r#"id           = "stable:2""#,
+    );
     let (text_a, dir_a) = staged(a, &["blob.bin"]);
     let (text_b, dir_b) = staged(&b, &["blob.bin"]);
 
@@ -132,7 +135,10 @@ fn test_spec_hash_format_is_oci_digest() {
     let spec = parse_and_validate_str(&text, dir).unwrap().spec;
     let hash = spec_hash(&spec).unwrap();
     let s = hash.to_string();
-    assert!(s.starts_with("sha256:"), "expected sha256:... form, got {s}");
+    assert!(
+        s.starts_with("sha256:"),
+        "expected sha256:... form, got {s}"
+    );
     assert_eq!(s.len(), "sha256:".len() + 64);
 }
 
@@ -149,4 +155,3 @@ fn test_canonical_bytes_are_valid_json() {
     let _v: serde_json::Value =
         serde_json::from_slice(&bytes).expect("JCS output must be valid JSON");
 }
-

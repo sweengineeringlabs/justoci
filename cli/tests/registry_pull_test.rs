@@ -64,7 +64,11 @@ impl Blob {
     fn new(bytes: Vec<u8>) -> Self {
         let digest = digest_of(&bytes);
         let size = bytes.len() as u64;
-        Blob { bytes, digest, size }
+        Blob {
+            bytes,
+            digest,
+            size,
+        }
     }
 }
 
@@ -177,8 +181,7 @@ fn mount_image_mocks<'a>(
 
     // Manifest GET.
     all.push(server.mock(|when, then| {
-        when.method(GET)
-            .path(format!("/v2/{repo}/manifests/{tag}"));
+        when.method(GET).path(format!("/v2/{repo}/manifests/{tag}"));
         then.status(200)
             .header("content-type", "application/vnd.oci.image.manifest.v1+json")
             .header("Docker-Content-Digest", image.manifest.digest.clone())
@@ -278,13 +281,13 @@ fn test_ref_parser_rejects_malformed_inputs() {
     // selection covers each defect class the parser is meant to
     // catch.
     let malformed = [
-        "",                                      // empty
-        "ghcr.io",                               // no repo
-        "ghcr.io/foo",                           // no tag, no digest
-        "https://ghcr.io/foo:v1",                // scheme prefix
-        "myreg/foo:v1",                          // bare hostname
-        "ghcr.io/foo:v1/test",                   // illegal tag char
-        "ghcr.io/foo@sha256:short",              // wrong digest length
+        "",                         // empty
+        "ghcr.io",                  // no repo
+        "ghcr.io/foo",              // no tag, no digest
+        "https://ghcr.io/foo:v1",   // scheme prefix
+        "myreg/foo:v1",             // bare hostname
+        "ghcr.io/foo:v1/test",      // illegal tag char
+        "ghcr.io/foo@sha256:short", // wrong digest length
         "ghcr.io/foo@sha512:0000000000000000000000000000000000000000000000000000000000000000",
     ];
     for raw in &malformed {
@@ -346,7 +349,7 @@ fn test_pull_streams_layer_bytes_with_digest_check() {
     let big_layer: Vec<u8> = (0..(1024 * 1024)).map(|i| (i & 0xff) as u8).collect();
     let image = compose_served_image(
         b"{\"architecture\":\"amd64\"}",
-        &[big_layer.clone()],
+        std::slice::from_ref(&big_layer),
         &[],
     );
 
@@ -400,11 +403,7 @@ fn test_pull_rejects_digest_mismatch() {
     // `tampered_bytes`.
     let original_layer_bytes = b"original-layer".to_vec();
     let tampered_bytes = b"TAMPERED-bytes-different-length-and-content".to_vec();
-    let image = compose_served_image(
-        b"{}",
-        &[original_layer_bytes.clone()],
-        &[],
-    );
+    let image = compose_served_image(b"{}", std::slice::from_ref(&original_layer_bytes), &[]);
 
     let server = MockServer::start();
     let repo = "acme/tampered";
@@ -412,8 +411,7 @@ fn test_pull_rejects_digest_mismatch() {
 
     // Manifest: legit.
     server.mock(|when, then| {
-        when.method(GET)
-            .path(format!("/v2/{repo}/manifests/{tag}"));
+        when.method(GET).path(format!("/v2/{repo}/manifests/{tag}"));
         then.status(200)
             .header("Docker-Content-Digest", image.manifest.digest.clone())
             .body(image.manifest.bytes.clone());
@@ -508,7 +506,10 @@ fn test_pull_assembles_local_oci_layout_with_referrers() {
 
     // The dest dir must validate as a complete OCI image layout.
     let img = ImageDir::open(dest.path()).expect("pulled dir must validate as ImageDir");
-    assert_eq!(img.descriptor().primary_manifest_digest, image.manifest.digest);
+    assert_eq!(
+        img.descriptor().primary_manifest_digest,
+        image.manifest.digest
+    );
     assert_eq!(img.descriptor().layers.len(), 2);
     assert_eq!(
         img.descriptor().referrer_manifests.len(),
@@ -565,8 +566,7 @@ fn test_pull_index_json_written_last_on_failure() {
 
     // Manifest, config, primary layer: serve.
     server.mock(|when, then| {
-        when.method(GET)
-            .path(format!("/v2/{repo}/manifests/{tag}"));
+        when.method(GET).path(format!("/v2/{repo}/manifests/{tag}"));
         then.status(200)
             .header("Docker-Content-Digest", image.manifest.digest.clone())
             .body(image.manifest.bytes.clone());
@@ -604,8 +604,10 @@ fn test_pull_index_json_written_last_on_failure() {
 
     // Referrer manifest fetch: serve.
     server.mock(|when, then| {
-        when.method(GET)
-            .path(format!("/v2/{repo}/manifests/{}", image.referrers[0].manifest.digest));
+        when.method(GET).path(format!(
+            "/v2/{repo}/manifests/{}",
+            image.referrers[0].manifest.digest
+        ));
         then.status(200)
             .header(
                 "Docker-Content-Digest",
@@ -616,13 +618,17 @@ fn test_pull_index_json_written_last_on_failure() {
     // Referrer config + layer: SABOTAGE — return 500 on every attempt
     // so retries exhaust and the pull fails.
     server.mock(|when, then| {
-        when.method(GET)
-            .path(format!("/v2/{repo}/blobs/{}", image.referrers[0].config.digest));
+        when.method(GET).path(format!(
+            "/v2/{repo}/blobs/{}",
+            image.referrers[0].config.digest
+        ));
         then.status(500).body("internal error");
     });
     server.mock(|when, then| {
-        when.method(GET)
-            .path(format!("/v2/{repo}/blobs/{}", image.referrers[0].layer.digest));
+        when.method(GET).path(format!(
+            "/v2/{repo}/blobs/{}",
+            image.referrers[0].layer.digest
+        ));
         then.status(500).body("internal error");
     });
 
@@ -676,7 +682,10 @@ fn test_pull_anonymous_does_not_send_authorization_header() {
             .matches(|req| {
                 req.headers
                     .as_ref()
-                    .map(|hs| hs.iter().all(|(k, _)| !k.eq_ignore_ascii_case("authorization")))
+                    .map(|hs| {
+                        hs.iter()
+                            .all(|(k, _)| !k.eq_ignore_ascii_case("authorization"))
+                    })
                     .unwrap_or(true)
             });
         then.status(200)
@@ -710,7 +719,11 @@ fn test_pull_anonymous_does_not_send_authorization_header() {
     let ref_str = format!("127.0.0.1:{}/{repo}:{tag}", server.port());
     pull_anonymous_into_image_dir(&ref_str, dest.path())
         .expect("anonymous pull must succeed without auth");
-    assert_eq!(manifest_mock.hits(), 1, "manifest must be fetched exactly once");
+    assert_eq!(
+        manifest_mock.hits(),
+        1,
+        "manifest must be fetched exactly once"
+    );
 
     env::remove_var("OCIMAGE_ALLOW_INSECURE");
 }
@@ -832,7 +845,9 @@ fn test_pull_bearer_token_attaches_authorization_header() {
 
     let dest = tempfile::tempdir().unwrap();
     let ref_str = format!("127.0.0.1:{}/{repo}:{tag}", server.port());
-    let auth = RegistryAuth::Bearer { token: token.into() };
+    let auth = RegistryAuth::Bearer {
+        token: token.into(),
+    };
     pull_into_image_dir(&ref_str, &auth, dest.path()).expect("bearer-auth pull must succeed");
     assert!(manifest_mock.hits() >= 1, "manifest mock must have matched");
 
@@ -860,9 +875,8 @@ fn test_pull_401_triggers_token_dance_and_succeeds_on_retry() {
     // from the same MockServer, which keeps the test single-process).
     let token_realm = format!("http://{}/token", server.address());
     let issued_token = "freshly-minted-bearer";
-    let challenge = format!(
-        r#"Bearer realm="{token_realm}",service="acme",scope="repository:{repo}:pull""#
-    );
+    let challenge =
+        format!(r#"Bearer realm="{token_realm}",service="acme",scope="repository:{repo}:pull""#);
 
     // First manifest GET (no Authorization): 401 with challenge.
     let unauth_mock = server.mock(|when, then| {
@@ -871,7 +885,10 @@ fn test_pull_401_triggers_token_dance_and_succeeds_on_retry() {
             .matches(|req| {
                 req.headers
                     .as_ref()
-                    .map(|hs| hs.iter().all(|(k, _)| !k.eq_ignore_ascii_case("authorization")))
+                    .map(|hs| {
+                        hs.iter()
+                            .all(|(k, _)| !k.eq_ignore_ascii_case("authorization"))
+                    })
                     .unwrap_or(true)
             });
         then.status(401)
@@ -1060,8 +1077,13 @@ fn test_pull_5xx_after_max_retries_fails_with_typed_error() {
     let ref_str = format!("127.0.0.1:{}/{repo}:{tag}", server.port());
     let err = pull_anonymous_into_image_dir(&ref_str, dest.path()).unwrap_err();
     match err {
-        RegistryPullError::RegistryRefused { status, url, body, .. } => {
-            assert_eq!(status, 503, "final status must be the 503 the registry returned");
+        RegistryPullError::RegistryRefused {
+            status, url, body, ..
+        } => {
+            assert_eq!(
+                status, 503,
+                "final status must be the 503 the registry returned"
+            );
             assert!(
                 url.contains(&format!("/v2/{repo}/manifests/{tag}")),
                 "error URL must point at the failing endpoint, got {url:?}",
@@ -1078,7 +1100,7 @@ fn test_pull_5xx_after_max_retries_fails_with_typed_error() {
     // so up to 4 attempts total before surfacing.)
     let hits = broken_mock.hits();
     assert!(
-        hits >= 2 && hits <= 4,
+        (2..=4).contains(&hits),
         "retry count must be bounded between 2 (initial + 1 retry) and 4 (initial + 3 retries), got {hits}",
     );
 

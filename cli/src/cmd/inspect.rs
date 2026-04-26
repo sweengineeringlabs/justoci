@@ -105,7 +105,7 @@ fn run_image_mode(image_dir: &Path) -> Result<InspectOutput, CliError> {
         let artifact_type = v
             .get("artifactType")
             .and_then(|x| x.as_str())
-            .or_else(|| r.artifact_type.as_deref())
+            .or(r.artifact_type.as_deref())
             .unwrap_or("<unknown>")
             .to_string();
         referrers.push(ReferrerInfo {

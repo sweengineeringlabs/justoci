@@ -69,11 +69,7 @@ impl Policy {
         let raw: RawPolicy = toml::from_str(toml_text)?;
         Ok(Policy {
             slsa_min_level: raw.slsa.and_then(|s| s.level),
-            require_signature: raw
-                .sign
-                .as_ref()
-                .and_then(|s| s.required)
-                .unwrap_or(false),
+            require_signature: raw.sign.as_ref().and_then(|s| s.required).unwrap_or(false),
             builder_id: raw.sign.and_then(|s| s.builder_id),
             sbom_formats: raw.sbom.and_then(|s| s.formats),
         })
@@ -146,11 +142,11 @@ formats = ["cyclonedx"]
         let p = Policy::parse(toml_text).unwrap();
         assert_eq!(p.slsa_min_level, Some(3));
         assert!(p.require_signature);
+        assert_eq!(p.builder_id.as_deref(), Some("ci.example.com/runner-x"));
         assert_eq!(
-            p.builder_id.as_deref(),
-            Some("ci.example.com/runner-x")
+            p.sbom_formats.as_deref(),
+            Some(&["cyclonedx".to_string()][..])
         );
-        assert_eq!(p.sbom_formats.as_deref(), Some(&["cyclonedx".to_string()][..]));
     }
 
     // Catches: a policy with an unknown key panicking the parser.

@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  # Warnings are signal — CI fails on any warning so the
+  # "no #[allow] dances" rule the workspace lives by stays
+  # enforceable across PRs.
+  RUSTFLAGS: -D warnings
+
+# justoci's Cargo.toml has a path-dep on the sibling justcas repo:
+#   cas = { path = "../justcas/cas", package = "swe_justcas_cas" }
+#
+# CI must check both repos out as siblings before any cargo
+# command runs. The default actions/checkout drops the repo into
+# `$GITHUB_WORKSPACE`; we override `path:` to put justoci into
+# `justoci/` and justcas into `justcas/` under the workspace, then
+# run all cargo commands from `justoci/`.
+#
+# The justcas checkout requires a Personal Access Token (PAT) with
+# `repo` scope stored as the `JUSTCAS_PAT` secret on the justoci
+# repo, because justcas is private. (Default GITHUB_TOKEN is scoped
+# to the running repo only.)
+
+jobs:
+  test:
+    name: cargo test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout justoci
+        uses: actions/checkout@v4
+        with:
+          path: justoci
+
+      - name: Checkout justcas (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: sweengineeringlabs/justcas
+          path: justcas
+          token: ${{ secrets.JUSTCAS_PAT }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: justoci -> justoci/target
+
+      - name: Install cosign
+        # Required for the attest crate's PATH-probe test
+        # (`test_cosign_not_installed_when_path_lacks_binary` runs
+        # ignored-by-default; we run it here with cosign present
+        # to confirm the production happy path actually finds it).
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: v2.4.0
+
+      - name: cosign --version
+        run: cosign version
+        working-directory: justoci
+
+      - name: cargo check
+        run: cargo check --workspace --all-targets
+        working-directory: justoci
+
+      - name: cargo test
+        run: cargo test --workspace
+        working-directory: justoci
+
+      - name: cargo test (cosign-installed PATH probe)
+        # The attest crate marks one test #[ignore] because it
+        # mutates PATH and must run with --test-threads=1. With
+        # cosign actually installed in CI, run it explicitly so
+        # the production cosign-on-PATH detection is exercised.
+        run: cargo test --workspace -- --ignored --test-threads=1
+        working-directory: justoci
+
+  clippy:
+    name: cargo clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout justoci
+        uses: actions/checkout@v4
+        with:
+          path: justoci
+
+      - name: Checkout justcas (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: sweengineeringlabs/justcas
+          path: justcas
+          token: ${{ secrets.JUSTCAS_PAT }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: justoci -> justoci/target
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+        working-directory: justoci
+
+  fmt:
+    name: cargo fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: cargo fmt --check
+        run: cargo fmt --all -- --check

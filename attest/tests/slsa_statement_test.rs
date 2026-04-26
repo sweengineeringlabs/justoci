@@ -57,7 +57,8 @@ fn test_emit_slsa_subject_names_artifact_and_carries_manifest_digest() {
     assert_eq!(subj.len(), 1, "exactly one subject entry");
     assert_eq!(subj[0]["name"], "demo:1.0");
     assert_eq!(
-        subj[0]["digest"]["sha256"], built.manifest_digest.hex(),
+        subj[0]["digest"]["sha256"],
+        built.manifest_digest.hex(),
         "subject digest must match manifest digest"
     );
 }
@@ -81,7 +82,8 @@ fn test_emit_slsa_external_parameters_pin_spec_hash() {
 
     let ep = &v["predicate"]["buildDefinition"]["externalParameters"];
     assert_eq!(
-        ep["spec_hash"], built.spec_hash.to_string(),
+        ep["spec_hash"],
+        built.spec_hash.to_string(),
         "spec_hash must be embedded in externalParameters"
     );
     assert_eq!(ep["spec_id"], "demo:1.0");
@@ -118,7 +120,8 @@ fn test_emit_slsa_resolved_dependencies_lists_all_layers() {
     );
     for ((idx, digest), dep) in built.layer_digests.iter().zip(deps.iter()) {
         assert_eq!(
-            dep["digest"]["sha256"], digest.hex(),
+            dep["digest"]["sha256"],
+            digest.hex(),
             "layer {idx} digest must round-trip"
         );
     }
@@ -156,7 +159,9 @@ fn test_emit_slsa_l3_claim_passes_through_unchanged() {
 
     let cfg = SlsaConfig {
         level: spec::SlsaLevel::L3,
-        builder_id: Some("https://github.com/owner/repo/.github/workflows/release.yml@refs/tags/v1".into()),
+        builder_id: Some(
+            "https://github.com/owner/repo/.github/workflows/release.yml@refs/tags/v1".into(),
+        ),
     };
     let stmt = emit_slsa(&built, &cfg, &cas)
         .expect("emit ok")

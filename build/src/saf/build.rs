@@ -40,13 +40,9 @@ use spec::LoadedSpec;
 
 use crate::api::build_error::BuildError;
 use crate::api::build_output::BuildOutput;
-use crate::api::oci_manifest::{
-    OciDescriptor, OciIndex, OciLayout, MEDIA_TYPE_OCI_INDEX,
-};
+use crate::api::oci_manifest::{OciDescriptor, OciIndex, OciLayout, MEDIA_TYPE_OCI_INDEX};
 use crate::core::layer::assemble_layer;
-use crate::core::oci_assembly::{
-    assemble_config_and_manifest, check_layer_count_post_assembly,
-};
+use crate::core::oci_assembly::{assemble_config_and_manifest, check_layer_count_post_assembly};
 
 /// Build an OCI Image Layout v1.1 from a `LoadedSpec`.
 ///
@@ -68,10 +64,7 @@ use crate::core::oci_assembly::{
 /// On failure returns a typed `BuildError` and leaves
 /// `<output_dir>.partial` on disk for diagnosis. The final
 /// `<output_dir>` is never created on a failed build.
-pub fn build(
-    loaded: &LoadedSpec,
-    output_dir: &Path,
-) -> Result<BuildOutput, BuildError> {
+pub fn build(loaded: &LoadedSpec, output_dir: &Path) -> Result<BuildOutput, BuildError> {
     if output_dir.exists() {
         return Err(BuildError::Io {
             path: output_dir.to_path_buf(),
@@ -132,8 +125,7 @@ pub fn build(
         manifests: vec![assembled.manifest_descriptor.clone()],
         annotations: Default::default(),
     };
-    let index_bytes =
-        serde_json::to_vec(&index).map_err(|source| BuildError::Json { source })?;
+    let index_bytes = serde_json::to_vec(&index).map_err(|source| BuildError::Json { source })?;
     let index_path = partial.join("index.json");
     fs::write(&index_path, &index_bytes).map_err(|source| BuildError::Io {
         path: index_path.clone(),

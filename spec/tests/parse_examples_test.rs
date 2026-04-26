@@ -42,7 +42,9 @@ fn test_vm_image_example_parses() {
             "downloads/rootfs-alpine.ext4",
         ],
     );
-    let spec = parse_and_validate(dir.path().join("vm-image.toml")).expect("parses").spec;
+    let spec = parse_and_validate(dir.path().join("vm-image.toml"))
+        .expect("parses")
+        .spec;
 
     assert_eq!(spec.kind, Kind::VmImage);
     assert_eq!(spec.id.name, "llmboot");
@@ -53,10 +55,7 @@ fn test_vm_image_example_parses() {
     assert!(spec.layers[1].media_type.as_str().contains("initrd"));
     assert!(spec.layers[2].media_type.as_str().contains("rootfs"));
     // Default attestation applies (no [attestation] block in this spec).
-    assert!(matches!(
-        spec.attestation.slsa.level,
-        spec::SlsaLevel::L2
-    ));
+    assert!(matches!(spec.attestation.slsa.level, spec::SlsaLevel::L2));
     assert!(matches!(
         spec.attestation.sbom.format,
         spec::SbomFormat::CycloneDx
@@ -70,13 +69,10 @@ fn test_vm_image_example_parses() {
 #[test]
 fn test_oci_artifact_example_parses() {
     let toml = include_str!("../../examples/oci-artifact.toml");
-    let dir = stage_spec(
-        "oci-artifact.toml",
-        toml,
-        &["weights/llama-7b.q4_0.gguf"],
-    );
-    let spec =
-        parse_and_validate(dir.path().join("oci-artifact.toml")).expect("parses").spec;
+    let dir = stage_spec("oci-artifact.toml", toml, &["weights/llama-7b.q4_0.gguf"]);
+    let spec = parse_and_validate(dir.path().join("oci-artifact.toml"))
+        .expect("parses")
+        .spec;
 
     assert_eq!(spec.kind, Kind::OciArtifact);
     assert_eq!(spec.id.name, "ggml-llama-7b");
@@ -92,16 +88,15 @@ fn test_oci_artifact_example_parses() {
 fn test_firmware_example_parses() {
     let toml = include_str!("../../examples/firmware.toml");
     let dir = stage_spec("firmware.toml", toml, &["build/firmware.bin"]);
-    let spec = parse_and_validate(dir.path().join("firmware.toml")).expect("parses").spec;
+    let spec = parse_and_validate(dir.path().join("firmware.toml"))
+        .expect("parses")
+        .spec;
 
     assert_eq!(spec.kind, Kind::RawImage);
     assert_eq!(spec.id.name, "device-firmware");
     assert_eq!(spec.layers.len(), 1);
     // Defaults applied (no [attestation] block).
-    assert!(matches!(
-        spec.attestation.slsa.level,
-        spec::SlsaLevel::L2
-    ));
+    assert!(matches!(spec.attestation.slsa.level, spec::SlsaLevel::L2));
 }
 
 #[test]
