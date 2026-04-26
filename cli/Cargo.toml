@@ -11,6 +11,15 @@ rust-version.workspace = true
 [package.metadata.struct-engine]
 application_type = "bin"
 
+# Cargo features. The default binary stays lean — no Vault dep, no
+# tokio runtime — so the operator who never touches `--auth vault`
+# pays no binary-size or compile-time cost. Building with
+# `--features vault` opts the operator into the Vault-backed
+# credential provider; see `cli/src/registry/credential_provider/vault.rs`.
+[features]
+default = []
+vault   = ["dep:vaultrs", "dep:tokio"]
+
 # Library + binary. The library exposes the typed subcommand
 # entry points, error mapping, verify pillar walker, and policy
 # parser so integration tests in `tests/` can drive subcommand
@@ -62,6 +71,16 @@ sha2               = { workspace = true }
 reqwest          = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "blocking"] }
 tempfile         = "3"
 
+# ── Optional, gated behind the `vault` feature. ────────────────────────────
+# `vaultrs` is the most-maintained Rust client for the HashiCorp Vault HTTP
+# API; pinned to 0.7.4 (MIT-licensed, Apache-2.0-compatible). It's an
+# async client built on `reqwest` + `tokio`, so when the feature is
+# active we also pull in tokio to drive the Vault calls from the
+# otherwise-blocking CLI. Without `--features vault`, neither dep is
+# compiled — the default binary keeps its current shape.
+vaultrs          = { version = "0.7", optional = true }
+tokio            = { workspace = true, optional = true }
+
 [dev-dependencies]
 assert_cmd = "2"
 predicates = "3"
@@ -75,3 +94,14 @@ httpmock         = "0.7"
 [[test]]
 name = "registry_pull_test"
 path = "tests/registry_pull_test.rs"
+
+# `vault` feature integration test. Compiled only when the feature
+# is active — without it, vaultrs isn't in the dep graph and the
+# integration test can't refer to the provider type. The single
+# test inside is `#[ignore]`-gated and only runs when a Vault dev
+# server is reachable on `VAULT_ADDR` + `VAULT_TOKEN`; CI without
+# Vault produces no spurious failure.
+[[test]]
+name             = "vault_provider_test"
+path             = "tests/vault_provider_test.rs"
+required-features = ["vault"]

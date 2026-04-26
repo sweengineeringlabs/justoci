@@ -70,6 +70,18 @@ cross-repo checkout step. The error is loud and obvious:
   for everything except the cosign integration (the cosign
   binary is Linux/Mac-first).
 
+### Optional Cargo features
+
+- **`vault`** (in `cli/`). Opt-in HashiCorp Vault credential
+  provider for `--auth vault`. Pulls in the `vaultrs` (MIT-licensed)
+  + `tokio` deps; the default `cargo build` does NOT compile
+  either, keeping the default `ocimage` binary lean. Build with
+  `cargo build -p swe_justoci_oci_cli --features vault`. The
+  feature's integration test (`cli/tests/vault_provider_test.rs`)
+  is `#[ignore]`-gated and runs against a local Vault dev server;
+  see [`docs/7-operations/auth-providers.md`](../7-operations/auth-providers.md)
+  for the dev-server setup.
+
 ## Running the test suite
 
 ```bash

@@ -43,6 +43,13 @@
 
 use thiserror::Error;
 
+// Vault-backed provider. Compiled only when the parent crate is
+// built with `--features vault` so the default binary doesn't pay
+// the `vaultrs` + tokio dep-graph cost. The module's surface is
+// re-exported by the parent module via the gated re-export below.
+#[cfg(feature = "vault")]
+pub mod vault;
+
 /// One environment-variable name reused across the env provider.
 /// Mirrors the publish side's variable so an operator who configured
 /// `ocimage publish` keeps the same surface for `ocimage verify`.

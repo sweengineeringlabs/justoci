@@ -355,6 +355,7 @@ Auth flags mirror `ocimage publish`:
 ```
 ocimage verify ghcr.io/acme/app:v1
 ocimage verify ghcr.io/acme/app:v1 --auth bearer --registry-token $GH_PAT
+ocimage verify ghcr.io/acme/app:v1 --auth vault [--vault-base-path PATH]
 ocimage verify localhost:5000/acme/app:0.1.0 --no-auth
 ocimage verify registry.io/acme/app@sha256:<hex> --policy policy.toml
 ocimage verify ghcr.io/acme/app:v1 --require-referrers
@@ -362,10 +363,18 @@ ocimage verify ghcr.io/acme/app:v1 --require-referrers
 
 `--auth env` (default) reads `REGISTRY_TOKEN`, then
 `REGISTRY_USERNAME` + `REGISTRY_PASSWORD`. `--no-auth` is the
-explicit-anonymous shorthand. The 401-then-`WWW-Authenticate`
-bearer-token dance (OCI Distribution §3.4) is handled
-transparently — public repos on Docker Hub / GHCR work without
-operator-supplied credentials.
+explicit-anonymous shorthand. `--auth vault` is gated behind the
+`vault` Cargo feature and pulls credentials from a HashiCorp Vault
+KV v2 path keyed on the registry host (default base path
+`secret/data/registry`); see
+[`docs/7-operations/auth-providers.md`](../7-operations/auth-providers.md)
+for the per-provider config + secret schema.
+
+The 401-then-`WWW-Authenticate` bearer-token dance (OCI Distribution
+§3.4) is handled transparently — public repos on Docker Hub / GHCR
+work without operator-supplied credentials.
+
+The same flag set applies to `ocimage publish --to registry:<host>/<repo>:<tag>`.
 
 #### `--require-referrers` (strict OCI 1.1 mode)
 

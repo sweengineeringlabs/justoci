@@ -182,7 +182,14 @@ fn pull_for_verify(
             pull_anonymous_into_image_dir_with_options(reference, dest, &pull_opts)?;
         }
         VerifyAuthMode::Authenticated(mode) => {
-            let registry_auth = mode.clone().into_registry_auth();
+            // Some auth modes (today: Vault) need the registry host
+            // to resolve credentials. Parse the ref FIRST so the
+            // host is in hand, then resolve, then call into the
+            // pull path. A malformed ref short-circuits with the
+            // typed parser error before we ever read Vault.
+            let parsed = crate::registry::parse_registry_ref(reference)?;
+            let resolved = mode.clone().resolve_for_registry(&parsed.host)?;
+            let registry_auth = resolved.into_registry_auth();
             pull_into_image_dir_with_options(reference, &registry_auth, dest, &pull_opts)?;
         }
     }

@@ -67,7 +67,9 @@ enum Commands {
         /// Auth mode for `registry:` sinks. `env` (default) reads
         /// REGISTRY_TOKEN, then REGISTRY_USERNAME+REGISTRY_PASSWORD.
         /// `basic` requires --registry-username + --registry-password.
-        /// `bearer` requires --registry-token.
+        /// `bearer` requires --registry-token. `vault` (only when the
+        /// CLI is built with `--features vault`) reads VAULT_ADDR +
+        /// VAULT_TOKEN and looks up `<--vault-base-path>/<registry>`.
         #[arg(long, default_value = "env")]
         auth: String,
 
@@ -90,6 +92,14 @@ enum Commands {
         /// Bearer token for `--auth bearer`.
         #[arg(long, env = "REGISTRY_TOKEN")]
         registry_token: Option<String>,
+
+        /// Vault KV v2 base path consulted by `--auth vault`.
+        /// Resolved as `<base-path>/<registry>` on the wire. Only
+        /// honoured when the CLI is built with `--features vault`;
+        /// otherwise the flag is accepted but ignored (any
+        /// `--auth vault` selection errors out at parse time).
+        #[arg(long, default_value = "secret/data/registry")]
+        vault_base_path: String,
     },
 
     /// Verify an OCI artifact's attestation pillars + (optional)
@@ -117,7 +127,9 @@ enum Commands {
         /// REGISTRY_TOKEN, then REGISTRY_USERNAME+REGISTRY_PASSWORD.
         /// `basic` requires --registry-username +
         /// --registry-password. `bearer` requires
-        /// --registry-token.
+        /// --registry-token. `vault` (only when the CLI is built
+        /// with `--features vault`) reads VAULT_ADDR + VAULT_TOKEN
+        /// and looks up `<--vault-base-path>/<registry>`.
         ///
         /// Ignored when `<reference>` is a local path.
         #[arg(long, default_value = "env")]
@@ -140,6 +152,14 @@ enum Commands {
         /// Bearer token for `--auth bearer`.
         #[arg(long, env = "REGISTRY_TOKEN")]
         registry_token: Option<String>,
+
+        /// Vault KV v2 base path consulted by `--auth vault`.
+        /// Resolved as `<base-path>/<registry>` on the wire. Only
+        /// honoured when the CLI is built with `--features vault`;
+        /// otherwise the flag is accepted but ignored (any
+        /// `--auth vault` selection errors out at parse time).
+        #[arg(long, default_value = "secret/data/registry")]
+        vault_base_path: String,
 
         /// Strict mode for the OCI 1.1 referrers API. On registry refs,
         /// a 404 from `/v2/<repo>/referrers/<digest>` becomes a hard
@@ -244,6 +264,7 @@ fn dispatch(command: Commands) -> Result<(), CliError> {
             registry_username,
             registry_password,
             registry_token,
+            vault_base_path,
         } => {
             let publish_auth = parse_publish_auth_mode(
                 no_auth,
@@ -251,6 +272,7 @@ fn dispatch(command: Commands) -> Result<(), CliError> {
                 registry_username,
                 registry_password,
                 registry_token,
+                &vault_base_path,
             )?;
             let outcome = publish::run(&dir, &to, publish_auth)?;
             for d in &outcome.digests_pushed {
@@ -270,6 +292,7 @@ fn dispatch(command: Commands) -> Result<(), CliError> {
             registry_username,
             registry_password,
             registry_token,
+            vault_base_path,
             require_referrers,
         } => {
             let verify_auth = parse_verify_auth_mode(
@@ -278,6 +301,7 @@ fn dispatch(command: Commands) -> Result<(), CliError> {
                 registry_username,
                 registry_password,
                 registry_token,
+                &vault_base_path,
             )?;
             let opts = VerifyOptions { require_referrers };
             let report =
@@ -391,6 +415,7 @@ fn parse_publish_auth_mode(
     username: Option<String>,
     password: Option<String>,
     token: Option<String>,
+    vault_base_path: &str,
 ) -> Result<PublishAuthMode, CliError> {
     if no_auth {
         let auth_was_set =
@@ -402,7 +427,7 @@ fn parse_publish_auth_mode(
         }
         return Ok(PublishAuthMode::Anonymous);
     }
-    let mode = parse_auth_mode(raw, username, password, token)?;
+    let mode = parse_auth_mode(raw, username, password, token, vault_base_path)?;
     Ok(PublishAuthMode::Authenticated(mode))
 }
 
@@ -415,6 +440,7 @@ fn parse_verify_auth_mode(
     username: Option<String>,
     password: Option<String>,
     token: Option<String>,
+    vault_base_path: &str,
 ) -> Result<VerifyAuthMode, CliError> {
     if no_auth {
         // Explicit anonymous wins over `--auth ...`. We don't
@@ -430,7 +456,7 @@ fn parse_verify_auth_mode(
         }
         return Ok(VerifyAuthMode::Anonymous);
     }
-    let mode = parse_auth_mode(raw, username, password, token)?;
+    let mode = parse_auth_mode(raw, username, password, token, vault_base_path)?;
     Ok(VerifyAuthMode::Authenticated(mode))
 }
 
@@ -439,6 +465,7 @@ fn parse_auth_mode(
     username: Option<String>,
     password: Option<String>,
     token: Option<String>,
+    vault_base_path: &str,
 ) -> Result<AuthMode, CliError> {
     match raw {
         "env" => Ok(AuthMode::Env),
@@ -467,8 +494,34 @@ fn parse_auth_mode(
             }
             Ok(AuthMode::Bearer { token })
         }
-        other => Err(CliError::Cli {
-            detail: format!("--auth: unknown mode {other:?} (expected env, basic, or bearer)"),
+        #[cfg(feature = "vault")]
+        "vault" => {
+            if vault_base_path.is_empty() {
+                return Err(CliError::Cli {
+                    detail: "--auth vault: --vault-base-path must be non-empty".into(),
+                });
+            }
+            Ok(AuthMode::Vault {
+                base_path: vault_base_path.to_string(),
+            })
+        }
+        #[cfg(not(feature = "vault"))]
+        "vault" => Err(CliError::Cli {
+            detail: format!(
+                "--auth vault: this binary was built without the `vault` feature \
+                 (--vault-base-path={vault_base_path:?} was supplied but ignored). \
+                 Rebuild with `cargo build --features vault` (see \
+                 docs/7-operations/auth-providers.md)."
+            ),
         }),
+        other => {
+            #[cfg(feature = "vault")]
+            let modes = "env, basic, bearer, or vault";
+            #[cfg(not(feature = "vault"))]
+            let modes = "env, basic, or bearer";
+            Err(CliError::Cli {
+                detail: format!("--auth: unknown mode {other:?} (expected {modes})"),
+            })
+        }
     }
 }

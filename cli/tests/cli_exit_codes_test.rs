@@ -176,6 +176,28 @@ fn test_publish_to_nonexistent_image_dir_returns_exit_4_publish_error() {
 }
 
 #[test]
+#[cfg(not(feature = "vault"))]
+fn test_verify_auth_vault_without_feature_returns_exit_64_cli_error() {
+    // Bug this catches: an operator who builds the default
+    // `ocimage` binary and tries `--auth vault` getting a confusing
+    // "unknown mode" message OR a silent fallthrough. The contract:
+    // the build profile is the gate. Without the feature, we surface
+    // a typed CliError telling the operator exactly what to rebuild.
+    // Routing through 64 (CLI-local) means the operator's reaction
+    // is "fix my invocation / build", not "retry the network."
+    common::ocimage_bin()
+        .arg("verify")
+        .arg("ghcr.io/acme/img:v1")
+        .arg("--auth")
+        .arg("vault")
+        .assert()
+        .failure()
+        .code(64)
+        .stderr(predicate::str::contains("vault"))
+        .stderr(predicate::str::contains("--features vault"));
+}
+
+#[test]
 fn test_verify_policy_violation_returns_exit_5() {
     // Bug this catches: a verify policy violation mis-routed to
     // anything but 5. The 5 is the signal "your artifact does not

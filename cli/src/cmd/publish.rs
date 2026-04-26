@@ -25,6 +25,10 @@ use oci_publish::{publish, ImageDir, PublishOutcome, PublishSink, RegistryAuth};
 use crate::error::CliError;
 
 /// CLI auth mode, before resolution into `RegistryAuth`.
+///
+/// `Vault` is gated behind the `vault` Cargo feature: without the
+/// feature, neither the variant nor the underlying `vaultrs` dep
+/// exists, and the default binary keeps its current shape.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthMode {
     /// Pull from env vars (`REGISTRY_TOKEN`, then
@@ -34,17 +38,126 @@ pub enum AuthMode {
     Basic { username: String, password: String },
     /// Pre-acquired bearer token.
     Bearer { token: String },
+    /// HashiCorp Vault KV v2 — resolves `<base_path>/<registry>` at
+    /// publish/verify time. Construction reads `VAULT_ADDR` +
+    /// `VAULT_TOKEN` from the environment; the resolution itself
+    /// happens via [`AuthMode::resolve_for_registry`] right before
+    /// the wire call so the host is known.
+    #[cfg(feature = "vault")]
+    Vault { base_path: String },
 }
 
 impl AuthMode {
     /// Convert to the publish crate's `RegistryAuth`.
+    ///
+    /// `Vault` is fallible-by-host and goes through
+    /// [`Self::resolve_for_registry`] instead — it cannot collapse
+    /// to a `RegistryAuth` without first reading the secret. Calling
+    /// this method on the Vault variant is a programming error and
+    /// panics; the CLI dispatchers always run `resolve_for_registry`
+    /// first.
     pub fn into_registry_auth(self) -> RegistryAuth {
         match self {
             AuthMode::Env => RegistryAuth::FromEnv,
             AuthMode::Basic { username, password } => RegistryAuth::Basic { username, password },
             AuthMode::Bearer { token } => RegistryAuth::Bearer { token },
+            #[cfg(feature = "vault")]
+            AuthMode::Vault { .. } => {
+                panic!(
+                    "AuthMode::Vault must be resolved via resolve_for_registry before calling \
+                     into_registry_auth — this is a CLI dispatcher bug",
+                );
+            }
         }
     }
+
+    /// Resolve a host-dependent auth mode (today: only `Vault`) into
+    /// a host-independent one suitable for [`Self::into_registry_auth`].
+    ///
+    /// For non-Vault variants this is a no-op identity. For `Vault`
+    /// it constructs a [`crate::registry::VaultProvider`] from
+    /// env, calls `resolve(host)`, and translates the resulting
+    /// `Authorization` header back into either
+    /// [`AuthMode::Basic`] (when the secret carried `username` +
+    /// `password`) or [`AuthMode::Bearer`] (when it carried
+    /// `token`).
+    ///
+    /// Returns the same variants as the input — never escalates
+    /// shape — except that Vault is replaced with whichever of
+    /// Basic/Bearer the secret payload selected.
+    pub fn resolve_for_registry(self, registry: &str) -> Result<Self, crate::error::CliError> {
+        // `registry` is only consulted when `self` is the Vault
+        // variant — for every other mode the host is irrelevant
+        // (Env reads process env; Basic / Bearer carry pre-resolved
+        // creds). The two cfg branches below are distinct so neither
+        // build path has an unused parameter or trailing dance.
+        #[cfg(feature = "vault")]
+        {
+            match self {
+                AuthMode::Vault { base_path } => resolve_vault_for_registry(&base_path, registry),
+                other => Ok(other),
+            }
+        }
+        #[cfg(not(feature = "vault"))]
+        {
+            // Touch `registry` in the diagnostic so the param is
+            // referenced on every build path. Today this branch is
+            // unreachable in practice (no host-dependent variant
+            // exists without the feature), but keeping the param
+            // shape stable across cfgs avoids a v-shaped function
+            // signature that would force every caller to re-cfg.
+            let _ = registry;
+            Ok(self)
+        }
+    }
+}
+
+/// Resolve the Vault provider for a specific registry host.
+///
+/// `from_env` returns `Ok(None)` when `VAULT_ADDR` / `VAULT_TOKEN`
+/// are unset; we treat that as a typed CLI error rather than a
+/// silent fall-through to anonymous, mirroring the EnvProvider's
+/// "set-but-empty is an error" rule. An operator who passed
+/// `--auth vault` wanted Vault used; surfacing the misconfiguration
+/// is the contract.
+///
+/// We call the typed `resolve_auth_mode` accessor (parallel to the
+/// trait's `resolve`) so we get back the raw `username`+`password`
+/// / `token` fields directly, without round-tripping through
+/// `Authorization:` header composition + decode.
+#[cfg(feature = "vault")]
+fn resolve_vault_for_registry(
+    base_path: &str,
+    registry: &str,
+) -> Result<AuthMode, crate::error::CliError> {
+    use crate::registry::credential_provider::vault::{
+        ResolvedVaultAuth, VaultProvider, ENV_VAULT_ADDR, ENV_VAULT_TOKEN,
+    };
+
+    let provider = VaultProvider::from_env(base_path)
+        .map_err(|cred_err| crate::error::CliError::Cli {
+            detail: format!("--auth vault: {cred_err}"),
+        })?
+        .ok_or_else(|| crate::error::CliError::Cli {
+            detail: format!(
+                "--auth vault: {ENV_VAULT_ADDR} and {ENV_VAULT_TOKEN} must both be set + non-empty"
+            ),
+        })?;
+    let resolved = provider
+        .resolve_auth_mode(registry)
+        .map_err(|cred_err| crate::error::CliError::Cli {
+            detail: format!("--auth vault: {cred_err}"),
+        })?
+        .ok_or_else(|| crate::error::CliError::Cli {
+            detail: format!(
+                "--auth vault: no Vault entry for registry {registry:?} (path \
+                 {base_path:?}/{registry} returned 404)"
+            ),
+        })?;
+    Ok(match resolved {
+        ResolvedVaultAuth::Bearer { token } => AuthMode::Bearer { token },
+        ResolvedVaultAuth::Basic { username, password } => AuthMode::Basic { username, password },
+    })
 }
 
 /// Auth selector for `ocimage publish`. Mirrors verify's
@@ -152,9 +265,17 @@ pub fn run(
             repository,
             tag,
         } => {
+            // Resolve host-dependent auth (today: only Vault) BEFORE
+            // building the sink so the publish-crate layer receives a
+            // host-independent `RegistryAuth`. Vault has to read the
+            // KV path keyed by the registry host; for every other
+            // variant `resolve_for_registry` is a no-op identity.
             let registry_auth = match auth {
                 PublishAuthMode::Anonymous => None,
-                PublishAuthMode::Authenticated(mode) => Some(mode.into_registry_auth()),
+                PublishAuthMode::Authenticated(mode) => {
+                    let resolved = mode.resolve_for_registry(&registry)?;
+                    Some(resolved.into_registry_auth())
+                }
             };
             PublishSink::Registry {
                 registry,
