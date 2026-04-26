@@ -1,0 +1,30 @@
+[package]
+name = "swe_justoci_spec"
+version = "0.1.0"
+edition = "2021"
+description = "Spec parser + validator + canonicaliser for justoci. The single source of truth for what a justoci v0 TOML spec means; consumed by build / attest / publish."
+license = "MIT"
+repository = "https://github.com/sweengineeringlabs/justoci"
+authors = ["SWE Engineering Labs"]
+rust-version = "1.75"
+
+[lib]
+name = "spec"
+path = "src/lib.rs"
+
+[dependencies]
+thiserror   = { workspace = true }
+serde       = { workspace = true }
+serde_json  = { workspace = true }
+toml        = { workspace = true }
+serde_jcs   = { workspace = true }
+# Content-addressed storage. The spec hash is a `cas::Digest` so it
+# round-trips through the same OCI digest format as layer / manifest
+# / attestation digests downstream — no separate hash format anywhere.
+cas         = { workspace = true }
+
+[dev-dependencies]
+# Tempdir-backed integration tests stage spec files plus zero-byte
+# stand-ins for layer sources so the file-existence check passes
+# without baking real binaries into the test fixtures.
+tempfile    = "3"

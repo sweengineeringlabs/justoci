@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "spec",
     "attest",
     "build",
     "publish",
@@ -10,10 +11,17 @@ members = [
 
 [workspace.dependencies]
 # ── Internal sibling crates ────────────────────────────────────────────────
+spec        = { path = "spec",    package = "swe_justoci_spec" }
 attest      = { path = "attest",  package = "swe_justoci_attest" }
 oci-build   = { path = "build",   package = "swe_justoci_oci_build" }
 oci-publish = { path = "publish", package = "swe_justoci_oci_publish" }
 oci-systemd = { path = "systemd", package = "swe_justoci_oci_systemd" }
+
+# ── Cross-repo sibling — swelabs/virtualization/justcas ──────────────────
+# Content-addressed storage primitive. Used by `spec` for the canonical
+# spec hash, and by every later crate (build, attest, publish) for layer
+# blobs, manifest digests, attestation referrers.
+cas = { path = "../justcas/cas", package = "swe_justcas_cas" }
 
 # ── Cross-workspace path-deps — vmisolate-side crates justoci consumes ────
 # `oci-build` reads/writes ImageSpec + ConfigManifest shapes; its file
@@ -36,3 +44,7 @@ clap               = { version = "4", features = ["derive", "env"] }
 tokio              = { version = "1", features = ["full"] }
 sha2               = "0.10"
 oci-distribution   = { version = "0.11", default-features = false, features = ["rustls-tls"] }
+# RFC 8785 JSON Canonicalization Scheme. Used by `spec::saf::canonicalize`
+# to compute the spec hash. Language-agnostic standard so re-implementations
+# of justoci in Go/Python compute the same hash for the same TOML input.
+serde_jcs          = "0.1"
