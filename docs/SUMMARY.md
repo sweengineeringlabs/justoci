@@ -23,6 +23,7 @@
 # Design
 
 - [Spec v0](./3-design/spec-v0.md)
+- [Scope and boundaries](./3-design/scope-and-boundaries.md)
 - [Architecture](./3-design/architecture.md)
 - [JCS canonicalisation](./3-design/canonicalisation.md)
 - [Cosign + Rekor coupled signing](./3-design/cosign-rekor.md)
