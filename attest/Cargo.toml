@@ -2,23 +2,30 @@
 name = "swe_justoci_attest"
 version = "0.1.0"
 edition = "2021"
-description = "Supply-chain attestation vehicle — SLSA provenance + CycloneDX SBOM + cosign signing for vmisolate VM images. Scaffolds ADR-016 pillars B + C."
+description = "Attestation pipeline for justoci — SLSA provenance + CycloneDX/SPDX SBOM + cosign signing emitted as OCI 1.1 referrers."
 license = "MIT"
-repository = "https://github.com/sweengineeringlabs/vmisolate"
+repository = "https://github.com/sweengineeringlabs/justoci"
 
 [lib]
 name = "attest"
 path = "src/lib.rs"
 
 [dependencies]
-thiserror    = { workspace = true }
-tracing      = { workspace = true }
-serde        = { workspace = true }
-serde_json   = { workspace = true }
-sha2         = { workspace = true }
+# Internal sibling crates.
+spec       = { workspace = true }
+cas        = { workspace = true }
+
+# JSON serialization for SLSA + SBOM payloads. CycloneDX 1.5 and SPDX
+# 2.3 are hand-rolled JSON: less dep-graph surface than pulling in
+# cyclonedx-bom or spdx-rs, and we control the byte layout (matters
+# for reproducibility — see `core::slsa::emit_slsa` reproducibility
+# guarantee in `tests/slsa_reproducibility_test.rs`).
+serde      = { workspace = true }
+serde_json = { workspace = true }
+
+thiserror  = { workspace = true }
+tracing    = { workspace = true }
 
 [dev-dependencies]
-# Unit tests are pure-Rust against the api/ trait surface.
-# Cosign integration is gated on ATTEST_SMOKE=1 env var — no
-# hard dep on cosign being on PATH at build time.
+# Tempdir-backed `FsCas` in tests + cosign stub harnesses.
 tempfile = "3"

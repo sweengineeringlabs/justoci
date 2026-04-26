@@ -1,6 +1,3 @@
-//! Operator-facing entry points. [`attest_build`] is the one-call
-//! pipeline that builders, CI scripts, and `ocimage publish
-//! --attest` compose against.
+pub mod attest;
 
-pub mod config;
-pub mod facade;
+pub use attest::{attest, attest_with_invoker};

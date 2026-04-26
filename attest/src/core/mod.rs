@@ -1,10 +1,12 @@
-//! Pure-Rust builders for SLSA provenance + CycloneDX SBOM predicates.
-//!
-//! No I/O, no subprocess, no network. Each builder transforms a
-//! well-typed input (`BuildContext`, `ComponentInfo` list) into a
-//! predicate value ready for embedding in a Statement. The SPI
-//! layer handles signing + attachment.
+pub mod cosign;
+pub mod sbom_cyclonedx;
+pub mod sbom_spdx;
+pub mod slsa;
 
-pub mod emit;
-pub mod sbom_builder;
-pub mod slsa_builder;
+// Re-exported so integration tests in `tests/` (which build the
+// crate normally, not under #[cfg(test)]) can construct the stub
+// cosign invoker and inject scripted outcomes.
+pub use cosign::{
+    sign_with, CosignInvocation, CosignInvoker, CosignOutcome, RealCosignInvoker,
+    StubCosignInvoker,
+};
