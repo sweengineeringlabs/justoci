@@ -26,9 +26,13 @@ use crate::error::CliError;
 
 /// CLI auth mode, before resolution into `RegistryAuth`.
 ///
-/// `Vault` is gated behind the `vault` Cargo feature: without the
-/// feature, neither the variant nor the underlying `vaultrs` dep
-/// exists, and the default binary keeps its current shape.
+/// `Vault` and `DockerConfig` are gated behind their respective
+/// Cargo features (`vault` / `docker-config`). Without the feature
+/// flag, neither the variant nor its underlying dep (`vaultrs` /
+/// `base64`+`dirs`) exists, and the default binary keeps its
+/// current shape. The two features are additive — building with
+/// `--features "vault,docker-config"` is supported and exercised
+/// in CI.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthMode {
     /// Pull from env vars (`REGISTRY_TOKEN`, then
@@ -45,6 +49,15 @@ pub enum AuthMode {
     /// the wire call so the host is known.
     #[cfg(feature = "vault")]
     Vault { base_path: String },
+    /// Docker config.json (`~/.docker/config.json` by default; an
+    /// explicit path may be supplied via `--docker-config-path`).
+    /// Resolves `auths.<registry>` at publish/verify time. The
+    /// resolution happens via [`AuthMode::resolve_for_registry`]
+    /// right before the wire call so the host is known. Does NOT
+    /// depend on Docker the daemon being installed — only on the
+    /// static config file.
+    #[cfg(feature = "docker-config")]
+    DockerConfig { config_path: Option<PathBuf> },
 }
 
 impl AuthMode {
@@ -68,6 +81,13 @@ impl AuthMode {
                      into_registry_auth — this is a CLI dispatcher bug",
                 );
             }
+            #[cfg(feature = "docker-config")]
+            AuthMode::DockerConfig { .. } => {
+                panic!(
+                    "AuthMode::DockerConfig must be resolved via resolve_for_registry before \
+                     calling into_registry_auth — this is a CLI dispatcher bug",
+                );
+            }
         }
     }
 
@@ -86,28 +106,27 @@ impl AuthMode {
     /// shape — except that Vault is replaced with whichever of
     /// Basic/Bearer the secret payload selected.
     pub fn resolve_for_registry(self, registry: &str) -> Result<Self, crate::error::CliError> {
-        // `registry` is only consulted when `self` is the Vault
-        // variant — for every other mode the host is irrelevant
-        // (Env reads process env; Basic / Bearer carry pre-resolved
-        // creds). The two cfg branches below are distinct so neither
-        // build path has an unused parameter or trailing dance.
-        #[cfg(feature = "vault")]
-        {
-            match self {
-                AuthMode::Vault { base_path } => resolve_vault_for_registry(&base_path, registry),
-                other => Ok(other),
+        // `registry` is consulted only when `self` is a host-dependent
+        // variant (Vault / DockerConfig) — Env reads process env, and
+        // Basic / Bearer carry pre-resolved creds. We thread the
+        // resolution through a single match so adding more
+        // host-dependent variants in the future is one arm, not
+        // another cfg-fork.
+        match self {
+            #[cfg(feature = "vault")]
+            AuthMode::Vault { base_path } => resolve_vault_for_registry(&base_path, registry),
+            #[cfg(feature = "docker-config")]
+            AuthMode::DockerConfig { config_path } => {
+                resolve_docker_config_for_registry(config_path.as_deref(), registry)
             }
-        }
-        #[cfg(not(feature = "vault"))]
-        {
-            // Touch `registry` in the diagnostic so the param is
-            // referenced on every build path. Today this branch is
-            // unreachable in practice (no host-dependent variant
-            // exists without the feature), but keeping the param
-            // shape stable across cfgs avoids a v-shaped function
-            // signature that would force every caller to re-cfg.
-            let _ = registry;
-            Ok(self)
+            other => {
+                // Touch `registry` so the param is always referenced —
+                // important when no host-dependent feature is enabled
+                // (otherwise the compiler warns about unused on the
+                // default build).
+                let _ = registry;
+                Ok(other)
+            }
         }
     }
 }
@@ -157,6 +176,59 @@ fn resolve_vault_for_registry(
     Ok(match resolved {
         ResolvedVaultAuth::Bearer { token } => AuthMode::Bearer { token },
         ResolvedVaultAuth::Basic { username, password } => AuthMode::Basic { username, password },
+    })
+}
+
+/// Resolve the docker-config provider for a specific registry host.
+///
+/// Maps `Ok(None)` from the provider — meaning either the
+/// `config.json` doesn't exist or has no entry for this registry —
+/// to a typed CLI error rather than silent fall-through to
+/// anonymous. An operator who passed `--auth docker-config` wanted
+/// docker-config used; surfacing the misconfiguration is the
+/// contract (mirrors the Vault provider's "must yield Some" rule).
+///
+/// We call the typed `resolve_auth_mode` accessor (parallel to the
+/// trait's `resolve`) so we get the raw fields directly without
+/// round-tripping through `Authorization:` header composition +
+/// decode.
+#[cfg(feature = "docker-config")]
+fn resolve_docker_config_for_registry(
+    config_path: Option<&Path>,
+    registry: &str,
+) -> Result<AuthMode, crate::error::CliError> {
+    use crate::registry::credential_provider::docker_config::{
+        DockerConfigProvider, ResolvedDockerAuth,
+    };
+
+    let provider = match config_path {
+        Some(p) => DockerConfigProvider::from_path(p),
+        None => DockerConfigProvider::from_default_path().map_err(|cred_err| {
+            crate::error::CliError::Cli {
+                detail: format!("--auth docker-config: {cred_err}"),
+            }
+        })?,
+    };
+    let resolved = provider
+        .resolve_auth_mode(registry)
+        .map_err(|cred_err| crate::error::CliError::Cli {
+            detail: format!("--auth docker-config: {cred_err}"),
+        })?
+        .ok_or_else(|| {
+            let path_hint = match config_path {
+                Some(p) => format!(" (config: {})", p.display()),
+                None => String::from(" (default: ~/.docker/config.json)"),
+            };
+            crate::error::CliError::Cli {
+                detail: format!(
+                    "--auth docker-config: no entry for registry {registry:?} \
+                     in docker config{path_hint}; run `docker login {registry}` first"
+                ),
+            }
+        })?;
+    Ok(match resolved {
+        ResolvedDockerAuth::Bearer { token } => AuthMode::Bearer { token },
+        ResolvedDockerAuth::Basic { username, password } => AuthMode::Basic { username, password },
     })
 }
 
@@ -352,6 +424,23 @@ mod tests {
             CliError::Cli { detail } => assert!(detail.contains("unknown sink scheme")),
             other => panic!("wrong variant: {other:?}"),
         }
+    }
+
+    // Catches: a regression where `AuthMode::DockerConfig` is
+    // somehow folded into `RegistryAuth` directly (e.g. by a
+    // refactor that "helpfully" maps the variant to FromEnv) —
+    // this would skip the per-host config-json lookup entirely
+    // and silently authenticate anonymously (or with the wrong
+    // creds via env). The contract is that DockerConfig MUST be
+    // resolved through `resolve_for_registry` first; calling
+    // `into_registry_auth` on it directly is a dispatcher bug
+    // that should panic loudly in test, not produce a wire call.
+    #[cfg(feature = "docker-config")]
+    #[test]
+    #[should_panic(expected = "AuthMode::DockerConfig must be resolved")]
+    fn test_auth_mode_docker_config_panics_on_into_registry_auth_without_resolve() {
+        let m = AuthMode::DockerConfig { config_path: None };
+        let _ = m.into_registry_auth();
     }
 
     // Catches: AuthMode::into_registry_auth dropping the password

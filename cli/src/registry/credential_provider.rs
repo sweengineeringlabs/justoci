@@ -50,6 +50,16 @@ use thiserror::Error;
 #[cfg(feature = "vault")]
 pub mod vault;
 
+// Docker-config-backed provider. Compiled only when the parent
+// crate is built with `--features docker-config` so the default
+// binary doesn't pay the `base64` + `dirs` dep-graph cost. The
+// module reads `~/.docker/config.json` and resolves the registry
+// credentials an operator already provisioned via `docker login`.
+// It does NOT depend on Docker the daemon being installed — only
+// on the static config file at the well-known path.
+#[cfg(feature = "docker-config")]
+pub mod docker_config;
+
 /// One environment-variable name reused across the env provider.
 /// Mirrors the publish side's variable so an operator who configured
 /// `ocimage publish` keeps the same surface for `ocimage verify`.

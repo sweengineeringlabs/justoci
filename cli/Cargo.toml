@@ -12,13 +12,18 @@ rust-version.workspace = true
 application_type = "bin"
 
 # Cargo features. The default binary stays lean — no Vault dep, no
-# tokio runtime — so the operator who never touches `--auth vault`
-# pays no binary-size or compile-time cost. Building with
-# `--features vault` opts the operator into the Vault-backed
-# credential provider; see `cli/src/registry/credential_provider/vault.rs`.
+# tokio runtime, no Docker-config reader — so the operator who never
+# touches an opt-in `--auth ...` mode pays no binary-size or
+# compile-time cost. Building with `--features vault` /
+# `--features docker-config` opts the operator into the matching
+# credential provider; see
+# `cli/src/registry/credential_provider/{vault,docker_config}.rs`.
+# Both features are additive — `--features "vault,docker-config"` is
+# a supported combination and exercised in CI.
 [features]
-default = []
-vault   = ["dep:vaultrs", "dep:tokio"]
+default       = []
+vault         = ["dep:vaultrs", "dep:tokio"]
+docker-config = ["dep:base64", "dep:dirs"]
 
 # Library + binary. The library exposes the typed subcommand
 # entry points, error mapping, verify pillar walker, and policy
@@ -81,6 +86,18 @@ tempfile         = "3"
 vaultrs          = { version = "0.7", optional = true }
 tokio            = { workspace = true, optional = true }
 
+# ── Optional, gated behind the `docker-config` feature. ────────────────────
+# `base64` 0.22 (MIT OR Apache-2.0) provides the v0.22 `Engine::decode`
+# API used to decode the inline `auth` field of `~/.docker/config.json`
+# back to `username:password` bytes. `dirs` 5 (MIT OR Apache-2.0)
+# resolves the platform-specific home directory so we can locate
+# `~/.docker/config.json` on Windows (`%USERPROFILE%\.docker`),
+# Linux (`$HOME/.docker`), and macOS without a per-platform cfg block.
+# Both crates are tiny (no transitive runtime / network deps) so the
+# binary-size cost of opting into this feature is negligible.
+base64           = { version = "0.22", optional = true }
+dirs             = { version = "5", optional = true }
+
 [dev-dependencies]
 assert_cmd = "2"
 predicates = "3"
@@ -105,3 +122,15 @@ path = "tests/registry_pull_test.rs"
 name             = "vault_provider_test"
 path             = "tests/vault_provider_test.rs"
 required-features = ["vault"]
+
+# `docker-config` feature integration test. Compiled only when the
+# feature is active — without it, `base64` + `dirs` aren't in the dep
+# graph and the integration test can't refer to the provider type.
+# Unlike the Vault test, this one needs no external service: it
+# stages a tempdir, writes a fake `config.json`, and points the
+# provider at it. Runs as part of the default
+# `cargo test -p swe_justoci_oci_cli --features docker-config` cycle.
+[[test]]
+name             = "docker_config_provider_test"
+path             = "tests/docker_config_provider_test.rs"
+required-features = ["docker-config"]

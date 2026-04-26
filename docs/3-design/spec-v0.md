@@ -356,6 +356,7 @@ Auth flags mirror `ocimage publish`:
 ocimage verify ghcr.io/acme/app:v1
 ocimage verify ghcr.io/acme/app:v1 --auth bearer --registry-token $GH_PAT
 ocimage verify ghcr.io/acme/app:v1 --auth vault [--vault-base-path PATH]
+ocimage verify ghcr.io/acme/app:v1 --auth docker-config [--docker-config-path PATH]
 ocimage verify localhost:5000/acme/app:0.1.0 --no-auth
 ocimage verify registry.io/acme/app@sha256:<hex> --policy policy.toml
 ocimage verify ghcr.io/acme/app:v1 --require-referrers
@@ -366,7 +367,11 @@ ocimage verify ghcr.io/acme/app:v1 --require-referrers
 explicit-anonymous shorthand. `--auth vault` is gated behind the
 `vault` Cargo feature and pulls credentials from a HashiCorp Vault
 KV v2 path keyed on the registry host (default base path
-`secret/data/registry`); see
+`secret/data/registry`). `--auth docker-config` is gated behind
+the `docker-config` Cargo feature and reads the static
+`~/.docker/config.json` an operator already wrote when they ran
+`docker login` (override path with `--docker-config-path PATH`); it
+does **not** depend on Docker the daemon being installed. See
 [`docs/7-operations/auth-providers.md`](../7-operations/auth-providers.md)
 for the per-provider config + secret schema.
 

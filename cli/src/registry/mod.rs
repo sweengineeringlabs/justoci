@@ -31,6 +31,8 @@ pub mod pull;
 pub mod ref_parser;
 
 pub use auth::AuthManager;
+#[cfg(feature = "docker-config")]
+pub use credential_provider::docker_config::DockerConfigProvider;
 #[cfg(feature = "vault")]
 pub use credential_provider::vault::{VaultProvider, DEFAULT_BASE_PATH as VAULT_DEFAULT_BASE_PATH};
 pub use credential_provider::{

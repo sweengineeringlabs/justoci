@@ -70,6 +70,10 @@ enum Commands {
         /// `bearer` requires --registry-token. `vault` (only when the
         /// CLI is built with `--features vault`) reads VAULT_ADDR +
         /// VAULT_TOKEN and looks up `<--vault-base-path>/<registry>`.
+        /// `docker-config` (only when the CLI is built with
+        /// `--features docker-config`) reads `~/.docker/config.json`
+        /// (or `--docker-config-path PATH`) and looks up
+        /// `auths.<registry>`.
         #[arg(long, default_value = "env")]
         auth: String,
 
@@ -100,6 +104,14 @@ enum Commands {
         /// `--auth vault` selection errors out at parse time).
         #[arg(long, default_value = "secret/data/registry")]
         vault_base_path: String,
+
+        /// Override path for `--auth docker-config`. Defaults to
+        /// `~/.docker/config.json`. Only honoured when the CLI is
+        /// built with `--features docker-config`; otherwise the
+        /// flag is accepted but ignored (any `--auth docker-config`
+        /// selection errors out at parse time).
+        #[arg(long)]
+        docker_config_path: Option<PathBuf>,
     },
 
     /// Verify an OCI artifact's attestation pillars + (optional)
@@ -130,6 +142,10 @@ enum Commands {
         /// --registry-token. `vault` (only when the CLI is built
         /// with `--features vault`) reads VAULT_ADDR + VAULT_TOKEN
         /// and looks up `<--vault-base-path>/<registry>`.
+        /// `docker-config` (only when the CLI is built with
+        /// `--features docker-config`) reads `~/.docker/config.json`
+        /// (or `--docker-config-path PATH`) and looks up
+        /// `auths.<registry>`.
         ///
         /// Ignored when `<reference>` is a local path.
         #[arg(long, default_value = "env")]
@@ -160,6 +176,14 @@ enum Commands {
         /// `--auth vault` selection errors out at parse time).
         #[arg(long, default_value = "secret/data/registry")]
         vault_base_path: String,
+
+        /// Override path for `--auth docker-config`. Defaults to
+        /// `~/.docker/config.json`. Only honoured when the CLI is
+        /// built with `--features docker-config`; otherwise the
+        /// flag is accepted but ignored (any `--auth docker-config`
+        /// selection errors out at parse time).
+        #[arg(long)]
+        docker_config_path: Option<PathBuf>,
 
         /// Strict mode for the OCI 1.1 referrers API. On registry refs,
         /// a 404 from `/v2/<repo>/referrers/<digest>` becomes a hard
@@ -265,6 +289,7 @@ fn dispatch(command: Commands) -> Result<(), CliError> {
             registry_password,
             registry_token,
             vault_base_path,
+            docker_config_path,
         } => {
             let publish_auth = parse_publish_auth_mode(
                 no_auth,
@@ -273,6 +298,7 @@ fn dispatch(command: Commands) -> Result<(), CliError> {
                 registry_password,
                 registry_token,
                 &vault_base_path,
+                docker_config_path,
             )?;
             let outcome = publish::run(&dir, &to, publish_auth)?;
             for d in &outcome.digests_pushed {
@@ -293,6 +319,7 @@ fn dispatch(command: Commands) -> Result<(), CliError> {
             registry_password,
             registry_token,
             vault_base_path,
+            docker_config_path,
             require_referrers,
         } => {
             let verify_auth = parse_verify_auth_mode(
@@ -302,6 +329,7 @@ fn dispatch(command: Commands) -> Result<(), CliError> {
                 registry_password,
                 registry_token,
                 &vault_base_path,
+                docker_config_path,
             )?;
             let opts = VerifyOptions { require_referrers };
             let report =
@@ -416,18 +444,31 @@ fn parse_publish_auth_mode(
     password: Option<String>,
     token: Option<String>,
     vault_base_path: &str,
+    docker_config_path: Option<PathBuf>,
 ) -> Result<PublishAuthMode, CliError> {
     if no_auth {
-        let auth_was_set =
-            raw != "env" || username.is_some() || password.is_some() || token.is_some();
+        let auth_was_set = raw != "env"
+            || username.is_some()
+            || password.is_some()
+            || token.is_some()
+            || docker_config_path.is_some();
         if auth_was_set {
             return Err(CliError::Cli {
-                detail: "--no-auth is mutually exclusive with --auth / --registry-* flags".into(),
+                detail: "--no-auth is mutually exclusive with --auth / --registry-* / \
+                         --docker-config-path flags"
+                    .into(),
             });
         }
         return Ok(PublishAuthMode::Anonymous);
     }
-    let mode = parse_auth_mode(raw, username, password, token, vault_base_path)?;
+    let mode = parse_auth_mode(
+        raw,
+        username,
+        password,
+        token,
+        vault_base_path,
+        docker_config_path,
+    )?;
     Ok(PublishAuthMode::Authenticated(mode))
 }
 
@@ -441,22 +482,35 @@ fn parse_verify_auth_mode(
     password: Option<String>,
     token: Option<String>,
     vault_base_path: &str,
+    docker_config_path: Option<PathBuf>,
 ) -> Result<VerifyAuthMode, CliError> {
     if no_auth {
         // Explicit anonymous wins over `--auth ...`. We don't
         // silently accept the conflict — that would surprise an
         // operator who set both — so we surface a typed error
         // when both are present and meaningful.
-        let auth_was_set =
-            raw != "env" || username.is_some() || password.is_some() || token.is_some();
+        let auth_was_set = raw != "env"
+            || username.is_some()
+            || password.is_some()
+            || token.is_some()
+            || docker_config_path.is_some();
         if auth_was_set {
             return Err(CliError::Cli {
-                detail: "--no-auth is mutually exclusive with --auth / --registry-* flags".into(),
+                detail: "--no-auth is mutually exclusive with --auth / --registry-* / \
+                         --docker-config-path flags"
+                    .into(),
             });
         }
         return Ok(VerifyAuthMode::Anonymous);
     }
-    let mode = parse_auth_mode(raw, username, password, token, vault_base_path)?;
+    let mode = parse_auth_mode(
+        raw,
+        username,
+        password,
+        token,
+        vault_base_path,
+        docker_config_path,
+    )?;
     Ok(VerifyAuthMode::Authenticated(mode))
 }
 
@@ -466,6 +520,7 @@ fn parse_auth_mode(
     password: Option<String>,
     token: Option<String>,
     vault_base_path: &str,
+    docker_config_path: Option<PathBuf>,
 ) -> Result<AuthMode, CliError> {
     match raw {
         "env" => Ok(AuthMode::Env),
@@ -514,11 +569,47 @@ fn parse_auth_mode(
                  docs/7-operations/auth-providers.md)."
             ),
         }),
+        #[cfg(feature = "docker-config")]
+        "docker-config" => Ok(AuthMode::DockerConfig {
+            config_path: docker_config_path,
+        }),
+        #[cfg(not(feature = "docker-config"))]
+        "docker-config" => {
+            // Touch the docker-config-only flag so the param is
+            // consumed on every build path; the diagnostic mentions
+            // it explicitly so the operator can correlate the error
+            // with the flag they passed.
+            let path_hint = docker_config_path
+                .as_ref()
+                .map(|p| format!(" (--docker-config-path={p:?} was supplied but ignored)"))
+                .unwrap_or_default();
+            Err(CliError::Cli {
+                detail: format!(
+                    "--auth docker-config: this binary was built without the \
+                     `docker-config` feature{path_hint}. Rebuild with \
+                     `cargo build --features docker-config` (see \
+                     docs/7-operations/auth-providers.md)."
+                ),
+            })
+        }
         other => {
-            #[cfg(feature = "vault")]
-            let modes = "env, basic, bearer, or vault";
-            #[cfg(not(feature = "vault"))]
-            let modes = "env, basic, or bearer";
+            // Build the "expected" list at the same time the cfg
+            // gates decide which variants are visible. Keeps the
+            // diagnostic in sync with the actual binary's surface
+            // — on a default-feature build, the operator who typed
+            // `--auth vault` should NOT see "vault" in the
+            // expected list (that would be misleading).
+            let modes = match (cfg!(feature = "vault"), cfg!(feature = "docker-config")) {
+                (true, true) => "env, basic, bearer, vault, or docker-config",
+                (true, false) => "env, basic, bearer, or vault",
+                (false, true) => "env, basic, bearer, or docker-config",
+                (false, false) => "env, basic, or bearer",
+            };
+            // `docker_config_path` may be Some on this branch even
+            // when the operator typed an unknown `--auth ...`
+            // value; touching it suppresses the unused-binding
+            // warning on every cfg path.
+            let _ = (vault_base_path, docker_config_path);
             Err(CliError::Cli {
                 detail: format!("--auth: unknown mode {other:?} (expected {modes})"),
             })
