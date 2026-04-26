@@ -71,17 +71,110 @@ use sigstore::oauth::IdentityToken;
 use super::cosign::{CosignInvocation, CosignInvoker, CosignOutcome};
 use spec::SignKind;
 
+/// Stable error string surfaced when an invoker constructed via
+/// [`SigstoreInvoker::staging`] is invoked on sigstore-rs 0.13
+/// (which doesn't expose a public staging path). Lifted to a
+/// `pub(crate)` constant so the e2e test can substring-match
+/// against it without coupling to the exact wording — see
+/// `attest/tests/sigstore_e2e_test.rs`.
+pub(crate) const STAGING_UNAVAILABLE_MSG: &str =
+    "sigstore-rs 0.13 does not expose a public staging SigningContext (the \
+     `Keyring` argument to `SigningContext::new` is `pub(crate)`); cannot \
+     reach fulcio.sigstage.dev / rekor.sigstage.dev through the SDK from \
+     external code. Tracking upstream sigstore-rs for a public `staging()` \
+     constructor; until then this invoker is a harness-only stub. \
+     Production code must use `SigstoreInvoker::new()` (production target).";
+
+/// Which Sigstore instance the invoker targets.
+///
+/// Public-good Sigstore runs two parallel deployments:
+///
+/// - **Production** (`fulcio.sigstore.dev` / `rekor.sigstore.dev`)
+///   — the canonical, immutable, public-facing transparency log.
+///   Anything written here is permanent. This is the only target
+///   for real artifacts.
+/// - **Staging** (`fulcio.sigstage.dev` / `rekor.sigstage.dev`) —
+///   a parallel deployment used by the Sigstore project for
+///   integration testing. Writes are accepted but the staging
+///   trust roots are NOT honoured by production cosign verifiers,
+///   so signatures produced against staging cannot be verified
+///   against production. Test-only target.
+///
+/// **The variant is load-bearing for production hygiene.** A
+/// regression that defaults staging callers to production would
+/// pollute the public log with CI test entries that are immutable
+/// and cannot be deleted. The `staging()` constructor exists
+/// solely to support `attest/tests/sigstore_e2e_test.rs`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SigstoreTarget {
+    /// Public-good production. Default for real signing.
+    Production,
+    /// Staging deployment. Tests only.
+    Staging,
+}
+
 /// Production `CosignInvoker` backed by the linked-in `sigstore`
-/// SDK. Constructed with `SigstoreInvoker::new()`. The struct is
+/// SDK. Constructed with [`SigstoreInvoker::new`] (production) or
+/// [`SigstoreInvoker::staging`] (test-only). The struct is
 /// stateless — every `invoke` call constructs a fresh
 /// `SigningContext` and `SigningSession`. That's the same shape
 /// the SDK examples use (see `examples/bundle/main.rs` upstream)
 /// and keeps the invoker `Send + Sync` without locks.
-pub struct SigstoreInvoker;
+pub struct SigstoreInvoker {
+    target: SigstoreTarget,
+}
 
 impl SigstoreInvoker {
+    /// Construct an invoker against the public-good **production**
+    /// Sigstore instance. This is the only constructor production
+    /// code paths should call.
     pub fn new() -> Self {
-        SigstoreInvoker
+        SigstoreInvoker {
+            target: SigstoreTarget::Production,
+        }
+    }
+
+    /// Construct an invoker against the public-good **staging**
+    /// Sigstore instance (`fulcio.sigstage.dev` /
+    /// `rekor.sigstage.dev`).
+    ///
+    /// **Test-only.** Staging trust roots are not honoured by
+    /// production cosign verifiers; bundles produced here cannot be
+    /// round-tripped through `cosign verify-blob` against the
+    /// production trust root. Production code must NEVER call this.
+    ///
+    /// ## Upstream limitation (sigstore-rs 0.13)
+    ///
+    /// As of `sigstore = "0.13"`, the SDK does **not** expose a
+    /// public `SigningContext::staging()` constructor. The
+    /// equivalent type, `SigningContext::new(...)`, requires a
+    /// `Keyring` argument whose type is `pub(crate)` — not
+    /// constructible from outside the crate. The only publicly
+    /// reachable trust root is hard-coded production via
+    /// `SigningContext::production()`.
+    ///
+    /// Consequently, an invoker constructed via `staging()`
+    /// currently surfaces a typed `SignFailed` outcome when invoked,
+    /// with an actionable error message pointing at the upstream
+    /// gap. The harness here (constructor + `target` field +
+    /// `attest/tests/sigstore_e2e_test.rs`) is in place so that
+    /// when sigstore-rs ships a public staging path, we lift the
+    /// gate by routing through the new API — no changes to test
+    /// code or CI plumbing required.
+    ///
+    /// Tracking: <https://github.com/sigstore/sigstore-rs/issues>
+    /// (no `staging()` API in 0.13.0 / `main` as of audit).
+    pub fn staging() -> Self {
+        SigstoreInvoker {
+            target: SigstoreTarget::Staging,
+        }
+    }
+
+    /// Which target this invoker is configured against. Exposed for
+    /// the e2e test to assert it didn't accidentally get a
+    /// production-default invoker.
+    pub fn target(&self) -> SigstoreTarget {
+        self.target
     }
 }
 
@@ -118,7 +211,20 @@ impl CosignInvoker for SigstoreInvoker {
             };
         }
 
-        // ── 1. Resolve OIDC identity token ──────────────────────────────
+        // ── 1. If staging was selected, fail fast with the upstream-gap ─
+        //    diagnostic before doing any OIDC work. Staging
+        //    unavailability is a build-time SDK limitation, not a
+        //    runtime config issue; reporting it before token
+        //    resolution gives operators the most actionable error.
+        //    Equally important for §6 hygiene: a regression here
+        //    must NOT silently fall through to production.
+        if matches!(self.target, SigstoreTarget::Staging) {
+            return CosignOutcome::SignFailed {
+                stderr: STAGING_UNAVAILABLE_MSG.to_string(),
+            };
+        }
+
+        // ── 2. Resolve OIDC identity token ──────────────────────────────
         let raw_token = match resolve_oidc_token() {
             Some(t) => t,
             None => return CosignOutcome::CosignNotInstalled,
@@ -136,11 +242,13 @@ impl CosignInvoker for SigstoreInvoker {
             }
         };
 
-        // ── 2. Build a SigningContext against the public-good Sigstore ──
-        // `production()` blocks on a current-thread tokio runtime
-        // internally; the SDK creates one for the duration of the
-        // call. This is fine for our sync API: we don't need to
-        // thread a runtime through `attest`.
+        // ── 3. Build a SigningContext against the production Sigstore ───
+        //    Staging was already short-circuited above, so we know
+        //    `target == Production` here. `production()` blocks on a
+        //    current-thread tokio runtime internally; the SDK creates
+        //    one for the duration of the call. This is fine for our
+        //    sync API: we don't need to thread a runtime through
+        //    `attest`.
         let ctx = match SigningContext::production() {
             Ok(c) => c,
             Err(e) => {
@@ -150,7 +258,7 @@ impl CosignInvoker for SigstoreInvoker {
             }
         };
 
-        // ── 3. Open a blocking signing session ──────────────────────────
+        // ── 4. Open a blocking signing session ──────────────────────────
         // `blocking_signer` does the Fulcio CSR exchange to obtain a
         // short-lived signing certificate bound to the OIDC subject.
         let session = match ctx.blocking_signer(identity_token) {
@@ -162,7 +270,7 @@ impl CosignInvoker for SigstoreInvoker {
             }
         };
 
-        // ── 4. Sign the manifest digest bytes ───────────────────────────
+        // ── 5. Sign the manifest digest bytes ───────────────────────────
         // Symmetric with the subprocess path: we sign the digest
         // *string* (e.g. "sha256:abc..."), not the manifest bytes.
         // That keeps the signed payload small and stable, and
@@ -194,7 +302,7 @@ impl CosignInvoker for SigstoreInvoker {
             }
         };
 
-        // ── 5. Convert the artifact to a Bundle, serialise to JSON ──────
+        // ── 6. Convert the artifact to a Bundle, serialise to JSON ──────
         let bundle = signing_artifact.to_bundle();
         let bundle_bytes = match serde_json::to_vec(&bundle) {
             Ok(b) => b,
@@ -205,7 +313,7 @@ impl CosignInvoker for SigstoreInvoker {
             }
         };
 
-        // ── 6. Extract the Rekor log_index from the bundle ──────────────
+        // ── 7. Extract the Rekor log_index from the bundle ──────────────
         // The §6 belt-and-braces check: even though the SDK's
         // `sign()` only returns `Ok` when Rekor recorded the entry
         // (per audit of sigstore-rs v0.13.0 source), we still
@@ -295,6 +403,17 @@ pub(crate) fn extract_sigstore_bundle_log_index(bundle_bytes: &[u8]) -> Option<u
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    /// Serialises tests that mutate process-global env vars
+    /// (`SIGSTORE_ID_TOKEN`, `OIDC_TOKEN`). Cargo runs tests within
+    /// a module in parallel by default, so two env-var tests racing
+    /// each other intermittently corrupts each other's setup —
+    /// observed pre-fix as `oidc-token-loses` -> None when the
+    /// sibling test `remove_var`'d between this test's set and read.
+    /// Hold the mutex for the entire duration of any test that
+    /// touches these env vars.
+    static ENV_MUTEX: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_extract_sigstore_log_index_parses_string_encoded_int64() {
@@ -384,10 +503,11 @@ mod tests {
         // identity, plus a build script setting SIGSTORE_ID_TOKEN
         // for an explicit Sigstore audience).
         //
-        // The test mutates process-global env vars; we restore on
-        // exit. `cargo test` runs unit tests in a single thread per
-        // module by default but we still scope-restore so a
-        // future parallel-test config doesn't corrupt other tests.
+        // The test mutates process-global env vars; ENV_MUTEX
+        // serialises with the sibling env-touching test so we don't
+        // observe each other's transient state under cargo's
+        // default parallel test execution.
+        let _g = ENV_MUTEX.lock().unwrap_or_else(|p| p.into_inner());
         let prev_sig = std::env::var("SIGSTORE_ID_TOKEN").ok();
         let prev_oidc = std::env::var("OIDC_TOKEN").ok();
 
@@ -411,6 +531,109 @@ mod tests {
     }
 
     #[test]
+    fn test_new_constructor_targets_production() {
+        // Bug this catches: a regression that flips the default
+        // target to Staging would cause every `SigstoreInvoker::new`
+        // caller (including the production attest path in
+        // `saf::attest::attest`) to write CI/test runs to the
+        // staging Rekor instead of production — quietly breaking
+        // every operator who relies on production Rekor for
+        // verification. Production hygiene rule.
+        let inv = SigstoreInvoker::new();
+        assert_eq!(inv.target(), SigstoreTarget::Production);
+    }
+
+    #[test]
+    fn test_default_constructor_targets_production() {
+        // Bug this catches: a regression where `Default::default()`
+        // diverges from `new()` (e.g. someone "helpfully" makes
+        // Default point at a stub for tests) would silently change
+        // production behaviour. The two must remain identical.
+        assert_eq!(
+            SigstoreInvoker::default().target(),
+            SigstoreInvoker::new().target()
+        );
+    }
+
+    #[test]
+    fn test_staging_constructor_targets_staging() {
+        // Bug this catches: a regression that makes
+        // `SigstoreInvoker::staging` accidentally return a
+        // production-targeted invoker would invert the e2e test —
+        // `cargo test sigstore_e2e -- --ignored` would write
+        // production Rekor entries instead of skipping cleanly,
+        // polluting the immutable production log. The hard rule
+        // "Use staging, never production" depends on this assertion.
+        let inv = SigstoreInvoker::staging();
+        assert_eq!(inv.target(), SigstoreTarget::Staging);
+    }
+
+    #[test]
+    fn test_staging_invoker_short_circuits_before_oidc_resolution() {
+        // Bug this catches: a regression that silently falls back
+        // to production when staging can't be constructed (e.g.
+        // future code added `or SigningContext::production()`)
+        // would write CI test runs to the production transparency
+        // log forever. We assert that staging produces a typed
+        // `SignFailed` whose message names the upstream sigstore-rs
+        // limitation — never a Production Rekor write, never a
+        // confusing OIDC-config error.
+        //
+        // We deliberately do NOT mutate process-global env vars here:
+        //
+        // - The staging-target check is *the first thing* `invoke`
+        //   does (after the kind-not-supported guard). It must
+        //   short-circuit regardless of whether `OIDC_TOKEN` /
+        //   `SIGSTORE_ID_TOKEN` is set, unset, valid, or malformed.
+        //   Reading any of those branches as a test outcome would
+        //   indicate a real regression.
+        // - Mutating env vars here races with `test_resolve_oidc_*`
+        //   tests in the same module under parallel test execution.
+        //   The point of *this* test is to prove the staging branch
+        //   is env-independent; the env-precedence tests cover the
+        //   env path separately.
+        let inv = SigstoreInvoker::staging();
+        let invocation = CosignInvocation {
+            manifest_digest: cas::Digest::from_bytes(cas::Algorithm::Sha256, b"test"),
+            kind: SignKind::CosignKeyless,
+            identity: None,
+        };
+        let outcome = inv.invoke(&invocation);
+        match outcome {
+            CosignOutcome::SignFailed { stderr } => {
+                assert!(
+                    stderr.contains("sigstore-rs 0.13 does not expose a public staging"),
+                    "staging invoker must surface the upstream limitation verbatim, \
+                     not a production trust-root error or OIDC-config error; got: {stderr}"
+                );
+                assert!(
+                    !stderr.contains("production trust root"),
+                    "staging invoker MUST NOT fall back to production semantics \
+                     (Rekor pollution risk); got: {stderr}"
+                );
+            }
+            CosignOutcome::CosignNotInstalled => {
+                panic!(
+                    "staging invoker must short-circuit BEFORE OIDC token resolution; \
+                     reaching CosignNotInstalled means a regression added an OIDC \
+                     check ahead of the staging-target check"
+                );
+            }
+            CosignOutcome::SignedAndRecorded { .. } => {
+                panic!(
+                    "staging invoker must NEVER return SignedAndRecorded — that \
+                     means we wrote to a Rekor instance, polluting either \
+                     production or staging from a unit test"
+                );
+            }
+            other => panic!(
+                "staging invoker must surface SignFailed with the upstream-gap \
+                 message, got: {other:?}"
+            ),
+        }
+    }
+
+    #[test]
     fn test_resolve_oidc_token_treats_empty_string_as_unset() {
         // Catches: a regression where `Ok("")` is treated as a
         // valid token. CI env vars often expand to empty strings
@@ -420,6 +643,7 @@ mod tests {
         // `IdentityToken::try_from(&str)`, which would fail with
         // "Malformed JWT" — a confusing error compared to the
         // actionable "OIDC token not configured" we want.
+        let _g = ENV_MUTEX.lock().unwrap_or_else(|p| p.into_inner());
         let prev = std::env::var("SIGSTORE_ID_TOKEN").ok();
         let prev_oidc = std::env::var("OIDC_TOKEN").ok();
         std::env::remove_var("OIDC_TOKEN");

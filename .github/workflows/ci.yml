@@ -262,6 +262,107 @@ jobs:
         run: bash tests/fixtures/jcs/verify_go.sh
         working-directory: justoci
 
+  sigstore-e2e:
+    # Real Fulcio + Rekor end-to-end against Sigstore staging
+    # (`fulcio.sigstage.dev` / `rekor.sigstage.dev`). Issue #14.
+    #
+    # The job:
+    #   1. Asks GitHub Actions to mint an OIDC identity token via
+    #      `actions/github-script`. The token's audience claim MUST
+    #      be "sigstore" — that is the value Fulcio (both production
+    #      and staging) requires for keyless signing JWTs. Any other
+    #      audience is rejected by Fulcio with a verifier error.
+    #   2. Exports the token as `OIDC_TOKEN` (the env var the
+    #      production `SigstoreInvoker` reads) for the test process.
+    #   3. Runs the `#[ignore]`-gated `sigstore_e2e_test` with
+    #      `--ignored --test-threads=1`. The serial-test pin is
+    #      because Sigstore rate-limits per-identity; running tests
+    #      in parallel would race the OIDC subject against itself.
+    #
+    # ## What this job exercises today (sigstore-rs 0.13)
+    #
+    # The current sigstore-rs SDK does not expose a public path to
+    # construct a staging `SigningContext` — see the
+    # `SigstoreInvoker::staging` docstring and the `STAGING_UNAVAIL-
+    # ABLE_MSG` constant in `attest/src/core/sigstore_invoker.rs`.
+    # Until upstream lands a `staging()` constructor, this job
+    # exercises the production-hygiene assertion in the test:
+    #   - the `staging()` invoker MUST return a Staging-targeted
+    #     invoker (not Production), and
+    #   - the invoker MUST surface the upstream-gap diagnostic, NOT
+    #     fall back to production Sigstore (which would write CI
+    #     test runs to the immutable public production Rekor log).
+    # The test SKIP-passes after asserting both — see the
+    # `SKIP[sigstore-e2e]` marker line in the job log.
+    #
+    # ## What this job will exercise after the upstream gap closes
+    #
+    # When sigstore-rs grows a public staging path and we lift the
+    # gate in `SigstoreInvoker::staging`, this same job — without
+    # YAML changes — will hit `fulcio.sigstage.dev` for a real
+    # signing certificate, sign a fixture digest, write to
+    # `rekor.sigstage.dev`, and validate the returned bundle.
+    #
+    # ## Permissions
+    #
+    # `id-token: write` is the GitHub Actions permission required
+    # to call `core.getIDToken()`. `contents: read` is the
+    # workspace-default; we list it explicitly because once you
+    # set any `permissions:` key, all unset keys default to none.
+    name: Sigstore staging e2e
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout justoci
+        uses: actions/checkout@v4
+        with:
+          path: justoci
+
+      - name: Checkout justcas (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: sweengineeringlabs/justcas
+          path: justcas
+          token: ${{ secrets.JUSTCAS_PAT }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: justoci -> justoci/target
+
+      - name: Get OIDC token from GitHub Actions
+        id: oidc
+        uses: actions/github-script@v7
+        with:
+          # `aud=sigstore` is mandatory — Fulcio (staging and
+          # production) rejects any other audience. Confirmed
+          # against the Fulcio configuration response:
+          #   https://fulcio.sigstage.dev/api/v2/configuration
+          # which lists `"audience": "sigstore"` for the
+          # token.actions.githubusercontent.com issuer.
+          script: |
+            const token = await core.getIDToken('sigstore');
+            core.setSecret(token);
+            core.setOutput('token', token);
+
+      - name: Run sigstore staging e2e
+        env:
+          # Wire the OIDC token to the env var
+          # `SigstoreInvoker::resolve_oidc_token` reads. The
+          # `OIDC_TOKEN` name is the generic fallback in the
+          # invoker's resolution order; if a future change adds
+          # a sigstore-specific channel, switch this to
+          # `SIGSTORE_ID_TOKEN` in lockstep.
+          OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
+        run: |
+          cargo test -p swe_justoci_attest \
+            --test sigstore_e2e_test \
+            -- --ignored --test-threads=1
+        working-directory: justoci
+
   msrv:
     # Verifies the workspace still compiles on the MSRV declared in
     # the root Cargo.toml's `[workspace.package]` block. Runs `cargo

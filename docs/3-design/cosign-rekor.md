@@ -281,3 +281,116 @@ Exit 5: VerifyError::PolicyViolation { rule: "sign.required" }
 
 (With default policy. Override with `[sign].required = false` if
 you accept VerifiedNotRecorded as a soft warning.)
+
+## Testing against staging
+
+Real Fulcio + Rekor wire-level coverage lives behind an
+`#[ignore]` gate in
+`attest/tests/sigstore_e2e_test.rs`. The CI job
+`sigstore-e2e` (in `.github/workflows/ci.yml`) drives it.
+
+### Staging vs production trust roots
+
+Public-good Sigstore runs two parallel deployments:
+
+| Deployment | Fulcio | Rekor | Trust root | Purpose |
+|------------|--------|-------|------------|---------|
+| Production | `fulcio.sigstore.dev` | `rekor.sigstore.dev` | shipped with cosign + sigstore-rs | Real artifacts. Immutable, public. |
+| Staging | `fulcio.sigstage.dev` | `rekor.sigstage.dev` | distinct staging trust root | Test traffic. Not honoured by production verifiers. |
+
+**The test runs against staging, never production.** Production's
+Rekor is the canonical immutable public log; CI test entries
+written there would persist forever. Issue #14's hard rule:
+
+> Use staging, never production. Any path that defaults to
+> production from a test is a bug.
+
+The hygiene assertion is encoded in the test itself: it constructs
+a `SigstoreInvoker::staging()` and asserts
+`invoker.target() == SigstoreTarget::Staging` before any I/O
+happens. A regression that wires `staging()` to `Production` is
+caught at test construction time, not after a Rekor pollution.
+
+### OIDC `aud` claim requirement
+
+Fulcio (staging and production both) requires the OIDC JWT's
+`aud` claim to be `"sigstore"`. Confirmed against
+`https://fulcio.sigstage.dev/api/v2/configuration` which lists
+`"audience": "sigstore"` for the
+`token.actions.githubusercontent.com` issuer.
+
+The CI job mints the token with that audience explicitly via
+`actions/github-script`:
+
+```yaml
+- name: Get OIDC token from GitHub Actions
+  uses: actions/github-script@v7
+  with:
+    script: |
+      const token = await core.getIDToken('sigstore');
+      core.setSecret(token);
+      core.setOutput('token', token);
+```
+
+Any other audience is rejected by Fulcio at certificate-exchange
+time — so getting this wrong fails fast with an actionable error,
+not silently.
+
+### CI job permissions
+
+The `sigstore-e2e` job declares:
+
+```yaml
+permissions:
+  contents: read
+  id-token: write
+```
+
+`id-token: write` is what unlocks `core.getIDToken()` — the
+default `GITHUB_TOKEN` cannot mint OIDC identity tokens.
+`contents: read` is restated explicitly because once any
+`permissions:` key is set, all unset keys default to `none`,
+which would block `actions/checkout`.
+
+### Local skip behaviour
+
+When `OIDC_TOKEN` is not set (a developer laptop without a
+GitHub Actions OIDC bootstrap), the test prints
+`SKIP[sigstore-e2e]: ...` to stderr and returns Ok. The SKIP
+marker is greppable from CI logs to confirm the SKIP is
+intentional, not a silent pass.
+
+### Upstream sigstore-rs limitation (0.13 era)
+
+`sigstore = "0.13"` does NOT expose a public way to construct a
+`SigningContext` against staging:
+
+- `SigningContext::production()` exists.
+- `SigningContext::staging()` does NOT exist (audited against
+  v0.13.0 and `main` at the time of the issue #14 commit).
+- `SigningContext::new(fulcio, rekor, ctfe_keyring)` is `pub`,
+  but the `Keyring` parameter type is `pub(crate)` — not
+  constructible from outside the sigstore crate.
+
+Until upstream lands a `staging()` constructor (or marks
+`Keyring` `pub`), the `SigstoreInvoker::staging()` constructor
+in `attest/src/core/sigstore_invoker.rs` returns an invoker that
+surfaces the gap as a typed `CosignOutcome::SignFailed` with a
+diagnostic message. The e2e test recognises this state and
+SKIP-passes after asserting the staging target was preserved
+and no production fall-through occurred.
+
+When upstream fixes the gap, the e2e test's `SignedAndRecorded`
+branch becomes the live wire — no test-side or CI-side YAML
+changes needed.
+
+### `cosign verify-blob` interop test
+
+A second `#[ignore]`-gated test
+(`test_real_sigstore_staging_signature_verifies_via_cosign_verify_blob`)
+sketches a cosign-CLI interop check: feed the staging bundle to
+`cosign verify-blob --trust-root sigstage` and assert exit 0.
+Deferred to v0.2 because it's blocked on the same upstream gap
+(no staging bundle to feed cosign), and because pinning
+sigstore-rs's staging TUF snapshot to cosign's staging TUF
+snapshot adds a coupling cost not justified at v0.2.

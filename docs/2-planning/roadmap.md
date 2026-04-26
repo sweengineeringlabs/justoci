@@ -20,6 +20,8 @@ workspace.
 | Docs | SDLC-phase documentation tree | ✓ | (this commit) |
 | Refactor | Move `oci-systemd` to vmisolate (xkvm-specific) | ✓ | (issue #5) |
 | Dogfood | Full pipeline against `registry:2`, no-attest path (`examples/dogfood/`) | ✓ | (issue #6) |
+| sigstore-rs migration | Linked-in SDK replaces cosign subprocess | ✓ | (issue #13) |
+| Sigstore staging e2e | `#[ignore]`-gated real-Fulcio + real-Rekor test against `*.sigstage.dev` | ✓ | (issue #14) |
 
 ## v0.2 — in flight / next
 
@@ -44,15 +46,24 @@ workspace.
   unreachable on the new path. See `docs/3-design/cosign-rekor.md`
   for the updated flow.
 
-- **Real Sigstore staging end-to-end test (issue #14)** — still
-  pending. Issue #13 ships the SDK migration with stubbed unit +
-  integration tests; #14 adds a `#[ignore]`-gated test that
-  drives a real OIDC flow against `fulcio.sigstage.dev` /
-  `rekor.sigstage.dev` from a CI job with `id-token: write`. Not
-  shipped inline with #13 because the GitHub Actions OIDC bootstrap
-  is non-trivial and the failure modes (token exchange, audience
-  mismatch, staging-trust-root drift) are best handled in their
-  own commit.
+- ~~**Real Sigstore staging end-to-end test (issue #14)**~~ —
+  **DONE (issue #14)**. The test harness lives at
+  `attest/tests/sigstore_e2e_test.rs` and the CI job
+  `sigstore-e2e` (in `.github/workflows/ci.yml`) drives it with
+  `id-token: write` and an OIDC token whose `aud` claim is
+  `sigstore` (Fulcio's hard requirement). The test exercises
+  `SigstoreInvoker::staging()` against
+  `fulcio.sigstage.dev` / `rekor.sigstage.dev` — never production
+  — with a hygiene assertion guarding that the staging
+  constructor cannot accidentally fall through to production
+  Rekor (which would pollute the immutable public log forever).
+  See `docs/3-design/cosign-rekor.md` "Testing against staging".
+  Open follow-up: sigstore-rs 0.13 does not expose a public
+  staging `SigningContext`; the test recognises this and
+  SKIP-passes after asserting no production fall-through. When
+  upstream lands a `staging()` constructor, the test's
+  SignedAndRecorded branch goes live with no test-side or
+  CI-side YAML changes.
 
 - **`--require-referrers` strict mode for verify** — today, a
   registry that returns 404 on `/v2/.../referrers/<digest>` is
