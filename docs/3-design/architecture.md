@@ -1,5 +1,108 @@
 # Architecture
 
+## Diagrams
+
+The four diagrams below cover the four shapes of the system: which crates depend on which (inclusion), how the pieces wire up at runtime (block), how a build flows data end-to-end (data flow), and how a publish-then-verify call sequences across the registry boundary (sequence). The ASCII pipeline that follows the diagrams is the same picture in a different style — keep both because each catches a different category of confusion.
+
+### Inclusion: workspace dep graph
+
+```mermaid
+flowchart TD
+  cli["cli<br/>(ocimage binary)"]
+  attest["attest<br/>(SLSA + SBOM + cosign)"]
+  build["build<br/>(spec → OCI layout)"]
+  publish["publish<br/>(OCI Distribution v2)"]
+  spec["spec<br/>(parse + JCS)"]
+  cas["cas<br/>(content-addressable store)"]
+
+  cli --> attest
+  cli --> build
+  cli --> publish
+  cli --> spec
+  attest --> spec
+  attest --> cas
+  build --> spec
+  build --> cas
+  publish --> cas
+
+  subgraph external [external siblings]
+    justsign["swe_justsign_*<br/>(--features justsign)"]
+    sigstoreRs["sigstore-rs<br/>(default --features sigstore-rs)"]
+  end
+
+  attest -.opt.-> justsign
+  attest -.default.-> sigstoreRs
+```
+
+### Block: runtime layout of `ocimage build`
+
+```mermaid
+flowchart LR
+  TOML[spec.toml] --> Parser[spec::parse_and_validate]
+  Parser --> Loaded[LoadedSpec + spec_hash]
+  Loaded --> KindDisc[kind discriminator]
+  KindDisc --> Builder[build::Builder]
+  Builder --> JCS[JCS canonicaliser]
+  JCS --> ManifestWriter[OCI manifest writer]
+  ManifestWriter --> Layout[OCI Image Layout v1.1]
+  Loaded --> AttestChain[attest::pillars]
+  AttestChain --> SLSA[SLSA Provenance v1]
+  AttestChain --> SBOM[CycloneDX 1.5 / SPDX 2.3]
+  AttestChain --> Cosign[Sigstore bundle]
+  SLSA --> Layout
+  SBOM --> Layout
+  Cosign --> Layout
+```
+
+### Data flow: TOML → registry-ready bundle
+
+```mermaid
+flowchart TD
+  T[TOML spec] --> V[parse + validate]
+  V --> H[spec_hash from JCS canonical form]
+  H --> KB[kind-typed builder]
+  KB --> M[OCI manifest]
+  KB --> L[layer blobs]
+  H --> AT[attestation chain]
+  AT --> SLSA[SLSA Provenance JSON]
+  AT --> SBOM[SBOM JSON]
+  AT --> SIG[Sigstore Bundle]
+  M --> R[OCI 1.1 referrer manifests]
+  L --> R
+  SLSA --> R
+  SBOM --> R
+  SIG --> R
+  R --> OUT[registry-ready Image Layout v1.1]
+```
+
+### Sequence: publish + verify across the registry boundary
+
+```mermaid
+sequenceDiagram
+  participant Op as Operator (ocimage)
+  participant Pub as publish::Sink
+  participant Reg as OCI Registry
+  participant Ver as Verifier
+  participant Cosign as Sigstore Verifier
+
+  Op->>Pub: ocimage publish dist/ --to registry:tag
+  Pub->>Reg: PUT manifest + blobs
+  Pub->>Reg: PUT referrer manifests (SLSA, SBOM, sig)
+  Reg-->>Pub: digests
+  Pub-->>Op: published refs
+
+  Note over Op,Reg: time passes; another consumer pulls
+
+  Ver->>Reg: GET manifest by digest
+  Ver->>Reg: GET referrers (SLSA, SBOM, sig)
+  Reg-->>Ver: blobs
+  Ver->>Cosign: verify Sigstore Bundle (DSSE + Rekor proof)
+  Cosign-->>Ver: ok / chain failure
+  Ver-->>Op: pass/fail per policy.toml
+```
+
+## Pipeline (ASCII)
+
 ```
                        ┌──────────────────┐
                        │  spec.toml       │

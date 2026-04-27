@@ -170,7 +170,7 @@ This provider does **not** depend on Docker the daemon being
 installed, running, or even ever invoked locally. It only reads the
 static JSON file at the well-known path. That keeps the
 "no Docker as a runtime dep" rule from
-[`docs/3-design/scope-and-boundaries.md`](../3-design/scope-and-boundaries.md)
+[`docs/3-design/scope_and_boundaries.md`](../3-design/scope_and_boundaries.md)
 intact: an operator with a `config.json` (e.g. one written by
 `podman login`, or synthesised by a CI workflow's
 `mkdir ~/.docker && cat > config.json` step) gets credential

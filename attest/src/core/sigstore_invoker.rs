@@ -41,7 +41,7 @@
 //! future SDK version could regress and we'd rather catch it as a
 //! `SignNotRecorded` than silently emit a Rekor-less Signature).
 //!
-//! See `docs/3-design/cosign-rekor.md` for the operator-facing
+//! See `docs/3-design/cosign_rekor.md` for the operator-facing
 //! description of this flow.
 //!
 //! ## OIDC token sourcing

@@ -156,7 +156,7 @@ fn test_wasm_module_with_two_layers_rejected() {
 
 ### 7. Update the spec doc
 
-`docs/3-design/spec-v0.md` — extend the "Kinds" table.
+`docs/3-design/spec_v0.md` — extend the "Kinds" table.
 
 ### 8. Update the executive summary
 

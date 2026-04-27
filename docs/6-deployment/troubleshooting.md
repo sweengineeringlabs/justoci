@@ -34,7 +34,7 @@ Error: kind 'vm_image' requires exactly 3 layers, got 2
 ```
 
 Each kind has a strict layer count rule (see
-[`3-design/spec-v0.md`](../3-design/spec-v0.md) §"Kinds"). Either
+[`3-design/spec_v0.md`](../3-design/spec_v0.md) §"Kinds"). Either
 add the missing layer or change the kind.
 
 ### `WrongLayerOrder`

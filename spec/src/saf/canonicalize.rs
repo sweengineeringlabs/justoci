@@ -1,7 +1,7 @@
 //! Spec canonicalisation — compute the bit-stable spec hash that
 //! pins the build for SLSA provenance.
 //!
-//! Pipeline (per spec-v0.md Production Guarantees §3):
+//! Pipeline (per spec_v0.md Production Guarantees §3):
 //!
 //!   sha256(jcs(spec_as_json(spec)))
 //!

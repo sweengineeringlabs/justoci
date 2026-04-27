@@ -11,7 +11,7 @@
 //!
 //! ## Exit-code mapping
 //!
-//! Per spec doc §7 (`docs/spec-v0.md`):
+//! Per spec doc §7 (`docs/3-design/spec_v0.md`):
 //!
 //! | Exit | Variant                  | Meaning                                  |
 //! |------|--------------------------|------------------------------------------|

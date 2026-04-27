@@ -36,7 +36,7 @@ tests/fixtures/jcs/
 
 Every fixture's `README.md` names the bug a re-implementation would
 have to reproduce to pass it. This is the same rule
-`docs/4-development/contributing.md` and `docs/5-testing/strategy.md`
+`docs/4-development/developer_guide.md` and `docs/5-testing/testing_strategy.md`
 apply to `#[test]` functions — a fixture that doesn't catch a real
 regression class is dead weight.
 

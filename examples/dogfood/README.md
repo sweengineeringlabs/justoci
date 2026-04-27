@@ -35,7 +35,7 @@ Harbor / GHCR / ECR install.
 
 - Docker available (`docker run --rm hello-world` should work).
 - `cargo` on `PATH` (workspace MSRV: 1.86; see
-  `docs/4-development/setup.md`).
+  `docs/4-development/developer_guide.md`).
 - `python` on `PATH` for the free-port probe.
 - `curl` on `PATH` for the registry liveness check.
 

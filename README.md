@@ -85,8 +85,8 @@ testing, not for the production path.
 ## Production guarantees
 
 These are encoded in the code, not just the docs. See
-[`docs/spec-v0.md`](docs/spec-v0.md) §"Production guarantees" for
-the full list. Highlights:
+[`docs/3-design/spec_v0.md`](docs/3-design/spec_v0.md) §"Production
+guarantees" for the full list. Highlights:
 
 - **Reproducible.** Same spec + same source files → bit-identical
   artifact digest. Pinned compression levels, sorted-entry tars,
@@ -114,10 +114,10 @@ Organised by SDLC phase under [`docs/`](docs/):
 - [`docs/SUMMARY.md`](docs/SUMMARY.md) — mdbook-style linear reading order.
 - [`docs/executive_summary.md`](docs/executive_summary.md) — one-page "what is this" for stakeholders.
 - [`docs/0-ideation/`](docs/0-ideation) — value proposition, market niche, roadmap.
-- [`docs/3-design/`](docs/3-design) — frozen spec format, architecture, JCS canonicalisation, cosign+Rekor coupling, OCI 1.1 referrer model, CLI surface, production guarantees.
-- [`docs/4-development/`](docs/4-development) — local setup, contributing, adding a kind.
-- [`docs/5-testing/`](docs/5-testing) — test strategy.
-- [`docs/6-deployment/`](docs/6-deployment) — CI integration recipes, auth providers, verify-policy format, troubleshooting.
+- [`docs/3-design/`](docs/3-design) — frozen spec format, architecture (with mermaid diagrams), JCS canonicalisation, cosign+Rekor coupling, OCI 1.1 referrer model, CLI surface, production guarantees, integration guide.
+- [`docs/4-development/`](docs/4-development) — developer guide (local setup + contributing), adding a kind.
+- [`docs/5-testing/`](docs/5-testing) — testing strategy.
+- [`docs/6-deployment/`](docs/6-deployment) — deployment guide (CI integration recipes), auth providers, verify-policy format, troubleshooting.
 
 Worked spec examples in [`examples/`](examples/):
 
@@ -167,7 +167,7 @@ Setup:
 v0 frozen — spec format stable, all five CLI subcommands working
 end-to-end. **~306 default-feature tests across the workspace**
 (plus ~20 more under feature flags; see
-[`docs/5-testing/strategy.md`](docs/5-testing/strategy.md)). Every
+[`docs/5-testing/testing_strategy.md`](docs/5-testing/testing_strategy.md)). Every
 test names a real bug it would catch — no smoke or tautological
 tests.
 

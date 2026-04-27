@@ -2,11 +2,11 @@
 
 These are encoded in code, not just documentation. Each guarantee
 has at least one test that names the bug it would catch if the
-guarantee regressed. See [`5-testing/strategy.md`](../5-testing/strategy.md)
+guarantee regressed. See [`5-testing/testing_strategy.md`](../5-testing/testing_strategy.md)
 for the test pattern.
 
 The full statement of each guarantee lives in
-[`3-design/spec-v0.md`](../3-design/spec-v0.md) §"Production
+[`3-design/spec_v0.md`](../3-design/spec_v0.md) §"Production
 guarantees". This page summarises and links to enforcement.
 
 ## 1. Spec versioning

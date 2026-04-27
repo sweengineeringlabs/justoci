@@ -69,8 +69,8 @@ files. A Python verifier (`tests/fixtures/jcs/verify_python.py`)
 ships alongside for contributors who want the same check locally
 in Python; both verifiers re-implement the projection so the
 fixtures prove cross-*language* agreement, not that two halves of
-the same impl agree. See `docs/5-testing/strategy.md` for the
-fixture set's place in the overall test plan.
+the same impl agree. See `docs/5-testing/testing_strategy.md` for
+the fixture set's place in the overall test plan.
 
 When the projection rules legitimately change (a new field is
 added to `Spec`, an enum gets a new variant, etc.), regenerate
@@ -278,5 +278,5 @@ original spec file, it can re-canonicalise + re-hash + compare.
 This is the integrity check that ties the published artifact back
 to the source spec.
 
-See [`5-testing/strategy.md`](../5-testing/strategy.md) §"Bug list
-the canonicaliser must catch" for the test set.
+See [`5-testing/testing_strategy.md`](../5-testing/testing_strategy.md)
+§"Bug list the canonicaliser must catch" for the test set.

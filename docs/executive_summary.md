@@ -75,7 +75,7 @@ media_type = "application/vnd.devboard-x7.firmware+binary"
 Three artifact `kind`s in v0: `oci_artifact` (oras-style generic),
 `vm_image` (kernel + initrd + rootfs), `raw_image` (single flashable
 blob). Adding new kinds is additive — see
-[`4-development/adding-a-kind.md`](./4-development/adding-a-kind.md)
+[`4-development/adding_a_kind.md`](./4-development/adding_a_kind.md)
 for the recipe.
 
 ## Production guarantees, distilled
@@ -92,7 +92,7 @@ for the recipe.
 - **Integrity on every read.** Pulling a blob from the CAS
   re-hashes; corruption surfaces as a typed error.
 
-Full list at [`3-design/spec-v0.md`](./3-design/spec-v0.md)
+Full list at [`3-design/spec_v0.md`](./3-design/spec_v0.md)
 §"Production guarantees".
 
 ## Repo layout

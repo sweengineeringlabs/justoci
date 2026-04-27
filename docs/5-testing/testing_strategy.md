@@ -4,7 +4,7 @@
 
 **Every test names the bug it would catch.**
 
-Already stated in [`4-development/contributing.md`](../4-development/contributing.md).
+Already stated in [`4-development/developer_guide.md`](../4-development/developer_guide.md).
 Repeated here because it's the single most important rule of the
 test suite.
 

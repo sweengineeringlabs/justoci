@@ -89,7 +89,7 @@ Sigstore staging).
   artifacts). Out of scope for v0; if user demand materialises, the
   right answer is a separate sibling repo (`justpentest` or
   similar) that consumes justoci's SBOM output, not folded into
-  justoci itself. See `docs/3-design/scope-and-boundaries.md`.
+  justoci itself. See `docs/3-design/scope_and_boundaries.md`.
 
 ## Decision log
 
@@ -97,7 +97,7 @@ Sigstore staging).
   justoci stays self-contained; port ideas not deps. License
   migrated to Apache-2.0 (`b88866e` / `82e81fc`) — correct
   destination independent of the integration question. See
-  `docs/3-design/scope-and-boundaries.md`.
+  `docs/3-design/scope_and_boundaries.md`.
 - **2026-04-26** — sigstore-rs migration (issue #13). Subprocess
   fallback retained behind `cosign-subprocess` feature for
   air-gapped builds; new `SigstoreInvoker` (linked-in SDK) is the

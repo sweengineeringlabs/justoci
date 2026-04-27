@@ -16,9 +16,11 @@ ocimage publish dist/ --to registry:ghcr.io/acme/firmware:1.4.2
 ocimage verify ghcr.io/acme/firmware:1.4.2 --policy policy.toml
 ```
 
-See [`0-ideation/value-proposition.md`](./0-ideation/value-proposition.md)
-for the product framing, [`3-design/spec-v0.md`](./3-design/spec-v0.md)
-for the spec format, and [`6-deployment/ci-integration.md`](./6-deployment/ci-integration.md)
+See [`0-ideation/value_proposition.md`](./0-ideation/value_proposition.md)
+for the product framing, [`3-design/spec_v0.md`](./3-design/spec_v0.md)
+for the spec format, [`3-design/integration_guide.md`](./3-design/integration_guide.md)
+for embedding the pipeline in your own systems, and
+[`6-deployment/deployment_guide.md`](./6-deployment/deployment_guide.md)
 for using `ocimage` in CI.
 
 ## Structure
@@ -26,10 +28,10 @@ for using `ocimage` in CI.
 | Phase | Contains |
 |-------|----------|
 | [`0-ideation/`](./0-ideation) | Product opinion, market niche, roadmap, why this vs `oras + cosign + bash`. Includes [`research/`](./0-ideation/research) for ecosystem surveys (registry providers, etc.). |
-| [`3-design/`](./3-design) | Spec format (frozen v0), architecture, JCS canonicalisation, cosign+Rekor coupled signing, OCI 1.1 referrer model, CLI surface, production guarantees. |
-| [`4-development/`](./4-development) | Cross-repo dev setup, contributing, the bug-it-catches test rule. |
-| [`5-testing/`](./5-testing) | Test strategy, coverage map. |
-| [`6-deployment/`](./6-deployment) | CI integration, auth providers, verify-policy format, troubleshooting. |
+| [`3-design/`](./3-design) | Spec format (frozen v0), architecture (with mermaid diagrams), JCS canonicalisation, cosign+Rekor coupled signing, OCI 1.1 referrer model, CLI surface, production guarantees, integration guide. |
+| [`4-development/`](./4-development) | Developer guide (cross-repo dev setup + contributing + bug-it-catches test rule), adding a kind. |
+| [`5-testing/`](./5-testing) | Testing strategy, coverage map. |
+| [`6-deployment/`](./6-deployment) | Deployment guide (CI integration recipes), auth providers, verify-policy format, troubleshooting. |
 
 [`SUMMARY.md`](./SUMMARY.md) is the mdbook-style index if you want
 the linear reading order.

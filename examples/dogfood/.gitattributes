@@ -7,6 +7,6 @@ payload.bin binary
 
 # run.sh must keep LF line endings even on Windows checkouts —
 # Git Bash + WSL refuse to source CRLF scripts cleanly, and the
-# `bash run.sh` invocation in setup.md would surface a confusing
+# `bash run.sh` invocation in developer_guide.md would surface a confusing
 # "$'\r': command not found" instead of running.
 run.sh text eol=lf

@@ -71,5 +71,7 @@ choice of *when* to build (PR vs main vs tag), *where* to publish
 (allow-list of identities, required SLSA level) lives in your CI
 pipelines. justoci provides the primitives; your CI composes them.
 
-See [`6-deployment/ci-integration.md`](../6-deployment/ci-integration.md)
-for a worked GitHub Actions recipe.
+See [`6-deployment/deployment_guide.md`](../6-deployment/deployment_guide.md)
+for a worked GitHub Actions recipe, and
+[`3-design/integration_guide.md`](../3-design/integration_guide.md)
+for embedding the pipeline as a library or CLI.

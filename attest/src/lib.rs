@@ -16,7 +16,7 @@
 //!    directly (feature `sigstore-rs`, default-on); a legacy cosign
 //!    subprocess invoker is available behind feature
 //!    `cosign-subprocess` for environments where the SDK dep tree
-//!    is unwelcome. See `docs/3-design/cosign-rekor.md`.
+//!    is unwelcome. See `docs/3-design/cosign_rekor.md`.
 //!
 //! Defaults (no `[attestation]` block in the spec) → SLSA L2 +
 //! CycloneDX layers + cosign-keyless. Each pillar is independently
