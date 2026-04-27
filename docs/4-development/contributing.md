@@ -40,7 +40,7 @@ fn test_gc_skips_in_flight_temp_files() { ... }
   partially (build → attest, sign → Rekor record), the failure
   mode must produce a typed error and leave the on-disk state
   inspectable. Production Guarantee §6 — see
-  [`1-requirements/production-guarantees.md`](../1-requirements/production-guarantees.md).
+  [`3-design/production_guarantees.md`](../3-design/production_guarantees.md).
 
 - **No AI-attribution lines in commits.** Standing convention.
 
@@ -91,7 +91,7 @@ that captures the decision.
 
 The high-level flow:
 
-1. Read `docs/2-planning/roadmap.md` to confirm scope.
+1. Read `docs/0-ideation/roadmap.md` to confirm scope.
 2. If the feature is non-trivial, draft a short design note —
    one page in `docs/3-design/<topic>.md` covering: what, why,
    the failure modes, the rollback strategy.

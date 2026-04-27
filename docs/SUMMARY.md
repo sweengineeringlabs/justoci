@@ -7,18 +7,10 @@
 
 - [Value proposition](./0-ideation/value-proposition.md)
 - [Non-container OCI artifact niche](./0-ideation/non-container-niche.md)
+- [Roadmap](./0-ideation/roadmap.md)
 - [Research notes](./0-ideation/research/README.md)
   - [OCI Distribution v2 providers](./0-ideation/research/oci-distribution-providers.md)
   - [Apache-2.0 vs MIT](./0-ideation/research/apache-2-vs-mit.md)
-
-# Requirements
-
-- [CLI surface](./1-requirements/cli-surface.md)
-- [Production guarantees](./1-requirements/production-guarantees.md)
-
-# Planning
-
-- [Roadmap](./2-planning/roadmap.md)
 
 # Design
 
@@ -28,6 +20,8 @@
 - [JCS canonicalisation](./3-design/canonicalisation.md)
 - [Cosign + Rekor coupled signing](./3-design/cosign-rekor.md)
 - [OCI 1.1 referrer model](./3-design/oci-referrers.md)
+- [CLI surface](./3-design/cli_surface.md)
+- [Production guarantees](./3-design/production_guarantees.md)
 
 # Development
 
@@ -42,8 +36,6 @@
 # Deployment
 
 - [CI integration](./6-deployment/ci-integration.md)
-
-# Operations
-
-- [Verify-policy format](./7-operations/verify-policy.md)
-- [Troubleshooting](./7-operations/troubleshooting.md)
+- [Auth providers](./6-deployment/auth_providers.md)
+- [Verify-policy format](./6-deployment/verify_policy.md)
+- [Troubleshooting](./6-deployment/troubleshooting.md)

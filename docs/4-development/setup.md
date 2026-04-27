@@ -79,7 +79,7 @@ cross-repo checkout step. The error is loud and obvious:
   `cargo build -p swe_justoci_oci_cli --features vault`. The
   feature's integration test (`cli/tests/vault_provider_test.rs`)
   is `#[ignore]`-gated and runs against a local Vault dev server;
-  see [`docs/7-operations/auth-providers.md`](../7-operations/auth-providers.md)
+  see [`docs/6-deployment/auth_providers.md`](../6-deployment/auth_providers.md)
   for the dev-server setup.
 - **`docker-config`** (in `cli/`). Opt-in `~/.docker/config.json`
   credential provider for `--auth docker-config`. Pulls in

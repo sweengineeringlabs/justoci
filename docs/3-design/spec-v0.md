@@ -372,7 +372,7 @@ the `docker-config` Cargo feature and reads the static
 `~/.docker/config.json` an operator already wrote when they ran
 `docker login` (override path with `--docker-config-path PATH`); it
 does **not** depend on Docker the daemon being installed. See
-[`docs/7-operations/auth-providers.md`](../7-operations/auth-providers.md)
+[`docs/6-deployment/auth_providers.md`](../6-deployment/auth_providers.md)
 for the per-provider config + secret schema.
 
 The 401-then-`WWW-Authenticate` bearer-token dance (OCI Distribution

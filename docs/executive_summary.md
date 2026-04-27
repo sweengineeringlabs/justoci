@@ -120,5 +120,5 @@ sibling repo, content-addressed-storage primitive.
   upstream-blocked: real Sigstore staging end-to-end signing
   (issue #21 / `sigstore/sigstore-rs#562`).
 
-See `docs/2-planning/roadmap.md` for the full table with commit
+See `docs/0-ideation/roadmap.md` for the full table with commit
 hashes.

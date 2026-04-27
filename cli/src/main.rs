@@ -566,7 +566,7 @@ fn parse_auth_mode(
                 "--auth vault: this binary was built without the `vault` feature \
                  (--vault-base-path={vault_base_path:?} was supplied but ignored). \
                  Rebuild with `cargo build --features vault` (see \
-                 docs/7-operations/auth-providers.md)."
+                 docs/6-deployment/auth_providers.md)."
             ),
         }),
         #[cfg(feature = "docker-config")]
@@ -588,7 +588,7 @@ fn parse_auth_mode(
                     "--auth docker-config: this binary was built without the \
                      `docker-config` feature{path_hint}. Rebuild with \
                      `cargo build --features docker-config` (see \
-                     docs/7-operations/auth-providers.md)."
+                     docs/6-deployment/auth_providers.md)."
                 ),
             })
         }

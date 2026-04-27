@@ -25,14 +25,11 @@ for using `ocimage` in CI.
 
 | Phase | Contains |
 |-------|----------|
-| [`0-ideation/`](./0-ideation) | Product opinion, market niche, why this vs `oras + cosign + bash`. Includes [`research/`](./0-ideation/research) for ecosystem surveys (registry providers, etc.). |
-| [`1-requirements/`](./1-requirements) | CLI subcommands as functional reqs, production guarantees as non-functional reqs. |
-| [`2-planning/`](./2-planning) | Roadmap — done, in flight, on the runway. |
-| [`3-design/`](./3-design) | Spec format (frozen v0), architecture, JCS canonicalisation, cosign+Rekor coupled signing, OCI 1.1 referrer model. |
+| [`0-ideation/`](./0-ideation) | Product opinion, market niche, roadmap, why this vs `oras + cosign + bash`. Includes [`research/`](./0-ideation/research) for ecosystem surveys (registry providers, etc.). |
+| [`3-design/`](./3-design) | Spec format (frozen v0), architecture, JCS canonicalisation, cosign+Rekor coupled signing, OCI 1.1 referrer model, CLI surface, production guarantees. |
 | [`4-development/`](./4-development) | Cross-repo dev setup, contributing, the bug-it-catches test rule. |
 | [`5-testing/`](./5-testing) | Test strategy, coverage map. |
-| [`6-deployment/`](./6-deployment) | CI integration patterns. |
-| [`7-operations/`](./7-operations) | Verify-policy format, troubleshooting (exit codes), runbook. |
+| [`6-deployment/`](./6-deployment) | CI integration, auth providers, verify-policy format, troubleshooting. |
 
 [`SUMMARY.md`](./SUMMARY.md) is the mdbook-style index if you want
 the linear reading order.

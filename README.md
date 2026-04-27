@@ -113,14 +113,11 @@ Organised by SDLC phase under [`docs/`](docs/):
 - [`docs/README.md`](docs/README.md) — phase index.
 - [`docs/SUMMARY.md`](docs/SUMMARY.md) — mdbook-style linear reading order.
 - [`docs/executive_summary.md`](docs/executive_summary.md) — one-page "what is this" for stakeholders.
-- [`docs/0-ideation/`](docs/0-ideation) — value proposition, market niche.
-- [`docs/1-requirements/`](docs/1-requirements) — CLI surface, production guarantees.
-- [`docs/2-planning/`](docs/2-planning) — roadmap.
-- [`docs/3-design/`](docs/3-design) — frozen spec format, architecture, JCS canonicalisation, cosign+Rekor coupling, OCI 1.1 referrer model.
+- [`docs/0-ideation/`](docs/0-ideation) — value proposition, market niche, roadmap.
+- [`docs/3-design/`](docs/3-design) — frozen spec format, architecture, JCS canonicalisation, cosign+Rekor coupling, OCI 1.1 referrer model, CLI surface, production guarantees.
 - [`docs/4-development/`](docs/4-development) — local setup, contributing, adding a kind.
 - [`docs/5-testing/`](docs/5-testing) — test strategy.
-- [`docs/6-deployment/`](docs/6-deployment) — CI integration recipes.
-- [`docs/7-operations/`](docs/7-operations) — verify-policy format, troubleshooting.
+- [`docs/6-deployment/`](docs/6-deployment) — CI integration recipes, auth providers, verify-policy format, troubleshooting.
 
 Worked spec examples in [`examples/`](examples/):
 
@@ -175,7 +172,7 @@ test names a real bug it would catch — no smoke or tautological
 tests.
 
 Recently shipped (post-v0 dossier — see
-[`docs/2-planning/roadmap.md`](docs/2-planning/roadmap.md) for
+[`docs/0-ideation/roadmap.md`](docs/0-ideation/roadmap.md) for
 the full table):
 
 - **sigstore-rs SDK migration** replaces the cosign subprocess as
