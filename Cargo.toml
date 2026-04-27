@@ -42,6 +42,33 @@ userspace = { path = "../vmisolate/main/features/userspace", package = "swe_vmis
 vmm-api   = { path = "../vmisolate/main/features/vmm-api",   package = "swe_vmisolate_vmm_api" }
 chroot    = { path = "../vmisolate/main/features/chroot",    package = "swe_vmisolate_chroot" }
 
+# ── Cross-repo sibling — swelabs/virtualization/justsign ──────────────────
+# Used ONLY when `attest` is built with `--features justsign` (the
+# third `CosignInvoker` impl alongside `sigstore-rs` and
+# `cosign-subprocess`). The path walks one level up out of
+# justoci-worktrees/justsign-invoker/ — i.e. the same parent the other
+# cross-repo siblings sit under (justcas/, justobserv/, vmisolate/) —
+# and lands in the justsign sibling repo's per-crate workspace
+# members. The four crates compose into the justsign-backed signing
+# surface justsign issue #16 wires up:
+#
+# * `swe_justsign_sign`   — `sign_blob_keyless()` + `EcdsaP256Signer`
+#   (the operation the invoker drives).
+# * `swe_justsign_fulcio` — `HttpFulcioClient` + `build_csr()`
+#   (CSR + OIDC-token → cert chain).
+# * `swe_justsign_rekor`  — `HttpRekorClient` (transparency-log
+#   submit; Rekor coupling enforced inside `sign_blob_keyless`).
+# * `swe_justsign_spec`   — `Bundle::encode_json()`
+#   (canonicalised JSON the invoker hands back as `bundle_bytes`).
+#
+# Under the default `sigstore-rs` feature these path-deps are silently
+# dropped — no `version` is declared next to `path`, matching the
+# convention the other cross-workspace path-deps in this block follow.
+swe_justsign_sign   = { path = "../justsign/sign",   package = "swe_justsign_sign"   }
+swe_justsign_fulcio = { path = "../justsign/fulcio", package = "swe_justsign_fulcio" }
+swe_justsign_rekor  = { path = "../justsign/rekor",  package = "swe_justsign_rekor"  }
+swe_justsign_spec   = { path = "../justsign/spec",   package = "swe_justsign_spec"   }
+
 # ── External ──────────────────────────────────────────────────────────────
 thiserror          = "2"
 anyhow             = "1"

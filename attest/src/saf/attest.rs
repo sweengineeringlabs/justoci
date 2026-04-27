@@ -15,6 +15,8 @@
 //!   - `sigstore-rs` (default): `SigstoreInvoker` (linked-in SDK).
 //!   - `cosign-subprocess`: `RealCosignInvoker` (spawns the
 //!     `cosign` binary).
+//!   - `justsign`: `JustsignInvoker` (in-house `swe_justsign_*`
+//!     stack — see `crate::core::justsign_invoker`).
 //! - `attest_with_invoker()` — test entry. Lets callers supply a
 //!   `StubCosignInvoker` to script signing outcomes deterministically.
 //!   Tests use this to exercise the Rekor-coupling failure mode
@@ -40,17 +42,26 @@ pub fn attest(
     attestation: &AttestationConfig,
     cas: &dyn Cas,
 ) -> Result<AttestationOutputs, AttestError> {
-    // Compile-time pick of the production invoker. When both
-    // features are active (e.g. `cargo test --all-features` in
-    // dev), we prefer sigstore-rs because that's the documented
-    // production path; `cosign-subprocess` is the explicit escape
-    // hatch. The `core::mod` `compile_error!` ensures at least one
-    // feature is on; we don't repeat that guard here.
+    // Compile-time pick of the production invoker. Precedence
+    // when multiple features are active (e.g. `cargo test
+    // --all-features` in dev) is: sigstore-rs > cosign-subprocess
+    // > justsign. sigstore-rs is the documented default;
+    // cosign-subprocess is the legacy escape hatch; justsign is
+    // the v0 opt-in alternative. The `core::mod` `compile_error!`
+    // ensures at least one feature is on; we don't repeat that
+    // guard here.
     #[cfg(feature = "sigstore-rs")]
     let invoker: Box<dyn CosignInvoker> =
         Box::new(crate::core::sigstore_invoker::SigstoreInvoker::new());
     #[cfg(all(not(feature = "sigstore-rs"), feature = "cosign-subprocess"))]
     let invoker: Box<dyn CosignInvoker> = Box::new(crate::core::cosign::RealCosignInvoker::new());
+    #[cfg(all(
+        not(feature = "sigstore-rs"),
+        not(feature = "cosign-subprocess"),
+        feature = "justsign"
+    ))]
+    let invoker: Box<dyn CosignInvoker> =
+        Box::new(crate::core::justsign_invoker::JustsignInvoker::new());
 
     attest_with_invoker(built, attestation, cas, invoker.as_ref())
 }

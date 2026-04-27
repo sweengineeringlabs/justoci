@@ -19,7 +19,16 @@ path = "src/lib.rs"
 # (e.g. wasm targets, restricted reqwest TLS choices) can still
 # build a working binary by shelling out to `cosign`.
 #
-# Exactly one of the two features must be active. The lib root
+# `justsign` is the third option (issue #16): route through the
+# in-house `swe_justsign_*` stack instead of sigstore-rs. Mirrors
+# the keyless flow Fulcio + Rekor + DSSE would otherwise drive
+# through the sigstore SDK, but keeps the dep tree under our own
+# governance — a build with `--no-default-features --features
+# justsign` drops the sigstore-rs crate entirely. v0 ships
+# justsign-keyless only; default stays `sigstore-rs` so existing
+# downstream callers see no change.
+#
+# Exactly one of the three features must be active. The lib root
 # enforces this with a compile-time `cfg!()` guard so a build
 # with `--no-default-features` and no signer feature fails fast
 # rather than silently producing a binary that panics at first
@@ -27,6 +36,14 @@ path = "src/lib.rs"
 default              = ["sigstore-rs"]
 sigstore-rs          = ["dep:sigstore"]
 cosign-subprocess    = []
+justsign = [
+    "dep:swe_justsign_sign",
+    "dep:swe_justsign_fulcio",
+    "dep:swe_justsign_rekor",
+    "dep:swe_justsign_spec",
+    "dep:p256",
+    "dep:rand_core",
+]
 
 [dependencies]
 # Internal sibling crates.
@@ -56,6 +73,30 @@ sigstore = { version = "0.13", optional = true, default-features = false, featur
     "sigstore-trust-root",
     "rustls-tls",
 ] }
+
+# justsign sibling crates — used ONLY by
+# `core::justsign_invoker::JustsignInvoker` (the third CosignInvoker
+# impl, gated behind `--features justsign`). Each is `optional`
+# because the dep is silently dropped under the default
+# `sigstore-rs` feature; if a build re-enables `justsign` the
+# four crates compose to provide CSR + cert chain + Rekor submit
+# + Bundle JSON encode without dragging sigstore-rs in.
+swe_justsign_sign   = { workspace = true, optional = true }
+swe_justsign_fulcio = { workspace = true, optional = true }
+swe_justsign_rekor  = { workspace = true, optional = true }
+swe_justsign_spec   = { workspace = true, optional = true }
+
+# RustCrypto primitives needed to mint an ephemeral keypair for the
+# Fulcio CSR exchange the justsign invoker drives. Both pinned to
+# match `swe_justsign_sign` / `swe_justsign_fulcio` / the rest of the
+# justsign stack so cargo resolves a single copy in the workspace
+# (re-pinning here would force two copies of `p256` into the build
+# graph, which the RustCrypto stack's API-stability guarantees do not
+# cover). `rand_core`'s `getrandom` feature is the OS-CSPRNG shim
+# `OsRng` reads from — same shape `swe_justsign_cli`'s
+# `cmd_generate_key_pair` uses.
+p256      = { version = "0.13", optional = true, default-features = false, features = ["std", "ecdsa", "pkcs8"] }
+rand_core = { version = "0.6",  optional = true, default-features = false, features = ["getrandom"] }
 
 [dev-dependencies]
 # Tempdir-backed `FsCas` in tests + cosign stub harnesses.
