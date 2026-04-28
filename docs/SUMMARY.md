@@ -8,6 +8,7 @@
 # Ideation
 
 - [Value proposition](./0-ideation/value_proposition.md)
+- [Use cases](./0-ideation/use_case.md)
 - [Market research](./0-ideation/market_research.md)
 - [Roadmap](./0-ideation/roadmap.md)
 - [Research notes](./0-ideation/research/README.md)
