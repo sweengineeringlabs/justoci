@@ -1,9 +1,10 @@
 use criterion::{BatchSize, BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use tempfile::TempDir;
 
-use swe_justoci_bench::load_push_runners;
+use swe_justoci_bench::{RegistryGuard, load_push_runners};
 
 fn bench_push(c: &mut Criterion) {
+    let _registry = RegistryGuard::start();
     let runners = load_push_runners();
     let mut group = c.benchmark_group("push");
     for runner in &runners {

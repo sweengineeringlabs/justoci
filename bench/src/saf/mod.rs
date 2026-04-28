@@ -1,3 +1,5 @@
+pub mod registry_guard;
+
 use crate::api::{BenchConfig, CaseConfig, Runner};
 
 fn load_config() -> BenchConfig {

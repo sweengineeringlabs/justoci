@@ -1,9 +1,10 @@
 use criterion::{BatchSize, BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use tempfile::TempDir;
 
-use swe_justoci_bench::load_pipeline_runners;
+use swe_justoci_bench::{RegistryGuard, load_pipeline_runners};
 
 fn bench_pipeline(c: &mut Criterion) {
+    let _registry = RegistryGuard::start();
     let runners = load_pipeline_runners();
     let mut group = c.benchmark_group("pipeline");
     for runner in &runners {
