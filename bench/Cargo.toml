@@ -12,12 +12,12 @@ authors        = ["SWE Engineering Labs"]
 
 [features]
 default       = []
-just-build    = ["dep:oci-build", "dep:spec", "dep:tempfile"]
+just-build    = ["dep:oci-build", "dep:spec"]
 just-sign     = ["dep:swe_justsign_sign", "dep:p256", "dep:rand_chacha", "dep:rand_core"]
-just-push     = ["dep:oci-build", "dep:oci-publish", "dep:spec", "dep:tempfile"]
+just-push     = ["dep:oci-build", "dep:oci-publish", "dep:spec"]
 just-pipeline = ["just-build", "just-sign", "just-push"]
-oras          = ["dep:tempfile"]
-cosign        = ["dep:tempfile"]
+oras          = []
+cosign        = []
 
 [dependencies]
 serde             = { version = "1", features = ["derive"] }
@@ -29,7 +29,7 @@ swe_justsign_sign = { workspace = true, optional = true }
 p256              = { version = "0.13", default-features = false, features = ["std", "ecdsa"], optional = true }
 rand_chacha       = { version = "0.3",  default-features = false, optional = true }
 rand_core         = { version = "0.6",  default-features = false, optional = true }
-tempfile          = { version = "3", optional = true }
+tempfile          = "3"
 dirs              = "6"
 
 [dev-dependencies]
