@@ -1,5 +1,7 @@
 # Apache-2.0 vs MIT
 
+**Audience**: Contributors, project leads
+
 Background research on the licensing choice. justoci was originally
 MIT; integrating with the xikaftin umbrella (Apache-2.0) forced the
 question. This page captures the analysis that drove the migration

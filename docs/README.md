@@ -1,5 +1,7 @@
 # justoci documentation
 
+**Audience**: All
+
 Documentation for the justoci attested OCI artifact pipeline,
 organised by SDLC phase.
 
@@ -27,7 +29,7 @@ for using `ocimage` in CI.
 
 | Phase | Contains |
 |-------|----------|
-| [`0-ideation/`](./0-ideation) | Product opinion, market niche, roadmap, why this vs `oras + cosign + bash`. Includes [`research/`](./0-ideation/research) for ecosystem surveys (registry providers, etc.). |
+| [`0-ideation/`](./0-ideation) | Product opinion ([`value_proposition.md`](./0-ideation/value_proposition.md)), market research ([`market_research.md`](./0-ideation/market_research.md)), roadmap. Includes [`research/`](./0-ideation/research) for one-off analyses (license choice). |
 | [`3-design/`](./3-design) | Spec format (frozen v0), architecture (with mermaid diagrams), JCS canonicalisation, cosign+Rekor coupled signing, OCI 1.1 referrer model, CLI surface, production guarantees, integration guide. |
 | [`4-development/`](./4-development) | Developer guide (cross-repo dev setup + contributing + bug-it-catches test rule), adding a kind. |
 | [`5-testing/`](./5-testing) | Testing strategy, coverage map. |

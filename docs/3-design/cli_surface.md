@@ -1,5 +1,7 @@
 # CLI surface — functional requirements
 
+**Audience**: Contributors, architects
+
 The `ocimage` operator CLI exposes five subcommands. Each is a
 functional requirement validated by integration tests in
 `cli/tests/`.

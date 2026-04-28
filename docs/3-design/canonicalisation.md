@@ -1,5 +1,9 @@
 # JCS canonicalisation — the spec hash pipeline
 
+**Audience**: Contributors, architects
+
+> **TLDR**: RFC 8785 JCS over the TOML→JSON spec projection produces a deterministic `spec_hash` that is identical across Rust, Go, and Python re-implementations — the load-bearing guarantee for portable SLSA provenance.
+
 ## Why we need it
 
 Production Guarantee §3 says: **same spec → same hash, across

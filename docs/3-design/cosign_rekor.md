@@ -1,5 +1,9 @@
 # Cosign + Rekor coupled signing
 
+**Audience**: Contributors, architects
+
+> **TLDR**: Signing is coupled to Rekor log confirmation — `cosign sign` success plus Rekor entry confirmed is the only "signed" state; Rekor failure returns `AttestError::SignNotRecorded` with no half-states.
+
 ## Production Guarantee §6, restated
 
 > **Sign + Rekor are coupled.** `cosign sign` succeeds → Rekor log

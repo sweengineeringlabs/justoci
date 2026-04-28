@@ -1,5 +1,9 @@
 # Integration guide
 
+**Audience**: Integrators, platform engineers
+
+> **TLDR**: Three integration shapes — CLI in CI (binary + typed exit codes), Rust library (link `build`/`attest`/`publish` crates directly), and verifier gate (pull-then-verify from a registry ref) — with concrete recipes for each.
+
 justoci is designed to be embedded three ways: as a CLI driven
 from a CI workflow, as a set of Rust libraries linked into a host
 application, and as a verifier gating downstream pulls. This
@@ -7,7 +11,7 @@ document walks through each shape with a concrete recipe.
 
 The guiding rule is **wire compatibility**: justoci builds
 OCI 1.1 referrer manifests that are byte-equivalent to what
-cosign / sigstore-rs / justsign produce. A consumer that already
+cosign and sigstore-rs produce. A consumer that already
 trusts cosign signatures + Rekor entries does not need a new
 verifier — they need to know which media types to look for
 (see [`oci_referrers.md`](./oci_referrers.md)).

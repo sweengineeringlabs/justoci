@@ -1,5 +1,9 @@
 # justoci spec v0
 
+**Audience**: Integrators, contributors, architects
+
+> **TLDR**: The v0 TOML spec — one file covers artifact identity, layers, config, annotations, and attestation policy; three kinds (`oci_artifact`, `vm_image`, `raw_image`) with SLSA+SBOM+cosign on by default and a frozen set of production guarantees.
+
 *One TOML file → attested OCI artifact, for any artifact type.
 Production-grade from day one — no opt-in robustness, no later "we'll
 harden it" milestones.*

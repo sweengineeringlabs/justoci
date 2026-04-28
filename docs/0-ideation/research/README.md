@@ -1,5 +1,7 @@
 # Research notes
 
+**Audience**: Contributors, architects
+
 Background research informing justoci's design decisions and
 positioning. Distinct from the ideation pages above (which carry
 the *opinion* / *pitch*) — these are *information* documents that
@@ -7,11 +9,6 @@ gather facts about the surrounding ecosystem.
 
 ## Contents
 
-- [`oci-distribution-providers.md`](./oci-distribution-providers.md)
-  — Survey of OCI Distribution v2 protocol providers (public
-  hosted, self-hosted, local-test options) with auth shape,
-  pricing, OCI 1.1 referrers API support, and notable quirks per
-  provider.
 - [`apache-2-vs-mit.md`](./apache-2-vs-mit.md) — License-choice
   analysis. Why justoci migrated from MIT to Apache-2.0 in
   `b88866e`, what the patent terms actually buy, why the

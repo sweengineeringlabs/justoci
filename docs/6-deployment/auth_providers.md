@@ -1,5 +1,9 @@
 # Registry credential providers
 
+**Audience**: Operators, platform engineers
+
+> **TLDR**: Credential chain for `ocimage publish/verify` — anonymous → env-var (token/basic/bearer) → Docker config file → Vault KV; selected via `--auth` flag; Vault and docker-config are opt-in Cargo features.
+
 `ocimage publish` and `ocimage verify <registry-ref>` resolve
 credentials through a chain of [`CredentialProvider`] impls. The
 operator-facing surface is the `--auth` flag plus a small set of

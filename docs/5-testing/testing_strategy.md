@@ -1,5 +1,9 @@
 # Testing strategy
 
+**Audience**: Contributors, QA
+
+> **TLDR**: ~306 default tests + 14 `#[ignore]`-gated real-dep tests across five crates; every test is named for the bug it catches — no smoke tests, no tautological assertions.
+
 ## The cardinal rule
 
 **Every test names the bug it would catch.**

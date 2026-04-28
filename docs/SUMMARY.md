@@ -1,15 +1,16 @@
 # Summary
 
+**Audience**: All
+
 [Introduction](./README.md)
 [Executive summary](./executive_summary.md)
 
 # Ideation
 
 - [Value proposition](./0-ideation/value_proposition.md)
-- [Non-container OCI artifact niche](./0-ideation/non_container_niche.md)
+- [Market research](./0-ideation/market_research.md)
 - [Roadmap](./0-ideation/roadmap.md)
 - [Research notes](./0-ideation/research/README.md)
-  - [OCI Distribution v2 providers](./0-ideation/research/oci-distribution-providers.md)
   - [Apache-2.0 vs MIT](./0-ideation/research/apache-2-vs-mit.md)
 
 # Design
@@ -27,7 +28,7 @@
 # Development
 
 - [Developer guide](./4-development/developer_guide.md)
-- [Adding a kind](./4-development/adding_a_kind.md)
+- [Adding a kind](./4-development/guide/adding_a_kind.md)
 
 # Testing
 

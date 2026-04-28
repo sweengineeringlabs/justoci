@@ -1,5 +1,7 @@
 # Value proposition
 
+**Audience**: Stakeholders, product leads
+
 ## The opinion
 
 **Attestation is on by default.**

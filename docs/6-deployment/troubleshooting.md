@@ -1,5 +1,9 @@
 # Troubleshooting
 
+**Audience**: Operators, developers
+
+> **TLDR**: Typed exit codes (0 = success, 1–5 = error class, 64+ = catastrophic) are the first diagnostic; this guide maps each code class to root cause and resolution steps.
+
 CLI exit codes are typed per error class. The first place to look
 for "what went wrong" is the exit code.
 

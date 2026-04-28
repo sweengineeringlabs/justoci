@@ -1,5 +1,7 @@
 # Adding a new artifact `kind`
 
+**Audience**: Contributors
+
 v0 ships three: `oci_artifact`, `vm_image`, `raw_image`. Adding
 a fourth (e.g. `wasm_module`, `helm_chart`, `unikernel_image`)
 is additive.

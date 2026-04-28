@@ -1,5 +1,7 @@
 # Production guarantees — non-functional requirements
 
+**Audience**: Architects, QA, contributors
+
 These are encoded in code, not just documentation. Each guarantee
 has at least one test that names the bug it would catch if the
 guarantee regressed. See [`5-testing/testing_strategy.md`](../5-testing/testing_strategy.md)

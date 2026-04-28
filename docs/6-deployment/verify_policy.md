@@ -1,5 +1,7 @@
 # Verify-policy format
 
+**Audience**: Operators, security engineers
+
 The `--policy <policy.toml>` flag on `ocimage verify` gates the
 artifact against operator-defined rules. Without `--policy`,
 verify reports each pillar's status without enforcing.

@@ -1,5 +1,7 @@
 # CI integration
 
+**Audience**: DevOps, operators
+
 The `ocimage` CLI is designed for CI pipelines: typed exit codes
 per error class, no interactive prompts, no stderr-vs-stdout
 ambiguity.

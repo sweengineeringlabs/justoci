@@ -1,5 +1,7 @@
 # OCI 1.1 referrer model
 
+**Audience**: Contributors, architects
+
 ## What
 
 Attestations (SLSA statements, SBOMs, cosign signatures) are

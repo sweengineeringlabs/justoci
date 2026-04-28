@@ -1,5 +1,7 @@
 # Scope and boundaries
 
+**Audience**: Contributors, project leads
+
 What `justoci` is, what it's not, and why. Records the strategic
 position so future contributors don't re-open the question every
 time a parallel project comes up.
@@ -53,7 +55,7 @@ We audited a parallel project (xikaftin) that has overlapping
 machinery — its own cas crate, its own OCI Distribution wire,
 its own auth abstraction with Vault + Docker-config support.
 The audit is captured in
-[`research/oci-distribution-providers.md`](../0-ideation/research/oci-distribution-providers.md)
+[`market_research.md`](../0-ideation/market_research.md)
 and on private analysis of the xikaftin tree.
 
 Depending on it would have given us:

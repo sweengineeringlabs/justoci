@@ -1,5 +1,9 @@
 # Architecture
 
+**Audience**: Architects, contributors
+
+> **TLDR**: Five-crate pipeline — spec → build → attest → publish — wires through a shared CAS; hand-rolled OCI types and Distribution wire lock in reproducibility-critical serialisation and per-blob idempotence.
+
 ## Diagrams
 
 The four diagrams below cover the four shapes of the system: which crates depend on which (inclusion), how the pieces wire up at runtime (block), how a build flows data end-to-end (data flow), and how a publish-then-verify call sequences across the registry boundary (sequence). The ASCII pipeline that follows the diagrams is the same picture in a different style — keep both because each catches a different category of confusion.

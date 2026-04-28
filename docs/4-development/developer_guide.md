@@ -1,11 +1,15 @@
 # Developer guide
 
+**Audience**: Contributors
+
+> **TLDR**: Local setup requires cloning `justoci` and `justcas` as siblings; every PR targets `main` directly with a test that names the bug it catches and `RUSTFLAGS=-D warnings` enforced in CI.
+
 This guide is the canonical entry point for working on justoci.
 It merges what used to live in `setup.md` (local toolchain +
 sibling-repo layout) and `contributing.md` (workflow, the
 bug-it-catches test rule, code-review focus) into a single
 narrative. If you're adding a new artifact `kind`, see the
-focused recipe in [`adding_a_kind.md`](./adding_a_kind.md).
+focused recipe in [`guide/adding_a_kind.md`](./guide/adding_a_kind.md).
 
 ## Branch model
 
@@ -32,8 +36,7 @@ stable.
 If you add a new design or runbook page under `docs/3-design/`,
 `docs/4-development/`, `docs/5-testing/`, or `docs/6-deployment/`,
 it MUST be `snake_case.md`. The mdbook build renders both forms
-identically; the convention is for grep, search, and parity with
-`justsign` / `justext4` / vmisolate.
+identically; the convention is for grep and search consistency.
 
 ## MSRV
 
@@ -360,7 +363,7 @@ The high-level flow:
 
 ### Adding a kind
 
-[`adding_a_kind.md`](./adding_a_kind.md) walks through the recipe
+[`guide/adding_a_kind.md`](./guide/adding_a_kind.md) walks through the recipe
 for adding a new artifact `kind` (e.g. `wasm_module`,
 `helm_chart`).
 

@@ -1,5 +1,7 @@
 # justoci — executive summary
 
+**Audience**: Stakeholders, project sponsors
+
 ## What
 
 An opinionated build / publish / attest pipeline for content-addressed
@@ -75,7 +77,7 @@ media_type = "application/vnd.devboard-x7.firmware+binary"
 Three artifact `kind`s in v0: `oci_artifact` (oras-style generic),
 `vm_image` (kernel + initrd + rootfs), `raw_image` (single flashable
 blob). Adding new kinds is additive — see
-[`4-development/adding_a_kind.md`](./4-development/adding_a_kind.md)
+[`4-development/guide/adding_a_kind.md`](./4-development/guide/adding_a_kind.md)
 for the recipe.
 
 ## Production guarantees, distilled
