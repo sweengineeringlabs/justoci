@@ -2,7 +2,7 @@
 
 **Audience**: Contributors, adopters evaluating build pipeline throughput.
 
-> **TLDR**: `oci_build::build` sustains **~220 MiB/s** for 16 MB artifacts with ~14 ms fixed overhead per build. `oci_publish::publish` (in-process HTTP) overtakes local-disk build at 16 MB reaching **~477 MiB/s** over loopback — fixed overhead ~34 ms. oras subprocess adds ~170 ms fixed cost. Run `cargo bench -p swe_justoci_bench --bench build` to reproduce.
+> **TLDR**: `oci_build::build` sustains **~220 MiB/s** writing an OCI layout to local disk, ~14 ms fixed overhead. For pushing to a registry, `oci_publish::publish` (in-process HTTP) reaches **~477 MiB/s** over loopback and is **4.7–7× faster than oras** — same operation, no subprocess. Run `cargo bench -p swe_justoci_bench --bench build` to reproduce.
 
 ## Bench architecture
 
@@ -55,18 +55,6 @@ Each iteration creates a fresh output directory; the source blob is pre-written 
 | 1 MB | **17.7 ms** | 56.7 MiB/s |
 | 16 MB | **72.7 ms** | 220 MiB/s |
 
-## Results — `oci_publish::publish` (in-process HTTP push to local registry:2)
-
-The OCI layout is built once at startup; each iteration pushes with a unique tag so the manifest PUT always fires. Blob deduplication means steady-state is HEAD×N blobs + manifest PUT.
-
-| Payload | Mean time | Throughput |
-|---|---|---|
-| 4 KB | **39.0 ms** | 103 KiB/s |
-| 1 MB | **33.4 ms** | 29.9 MiB/s |
-| 16 MB | **33.6 ms** | 477 MiB/s |
-
-The ~34 ms floor covers the HTTP round-trip set: HEAD check per blob + manifest PUT, all on loopback. At 16 MB the data transfer time (~29 ms above the floor of a 4 KB push) still fits inside 34 ms — loopback achieves ~530 MB/s effective throughput, so the network cost is absorbed. The 4 KB and 1 MB cases are floor-bound; 16 MB becomes throughput-bound.
-
 ## What the numbers mean
 
 ### Fixed overhead dominates small artifacts
@@ -84,44 +72,37 @@ The 4 KB and 1 MB justoci cases take nearly identical time (~15–18 ms). That f
 
 For the 4 KB case, data processing is negligible — the fixed overhead is the entire cost.
 
-### Crossover: publish beats justoci at 16 MB
-
-At 16 MB, loopback HTTP becomes faster than NTFS write:
-
-- justoci writes the full 16 MB layer to disk: **72.7 ms**
-- publish pushes the same 16 MB over loopback: **33.6 ms**
-
-This is expected: NTFS random-write latency (~200–300 MB/s effective for small-file workloads with `rename` overhead) loses to loopback TCP at 530+ MB/s. For large artifacts in a pipeline that pushes to a registry anyway, using `oci_publish` directly skips the intermediate disk write.
-
 ### Throughput scales with payload
 
-At 16 MB, data processing overtakes the fixed overhead and justoci reaches ~220 MiB/s (NTFS write bandwidth). For publish, the 477 MiB/s reflects loopback throughput after blob deduplication reduces re-upload cost.
-
-Adding Gzip or Zstd compression reduces disk I/O at the cost of CPU; actual throughput depends on codec and compression ratio.
+At 16 MB, data processing overtakes the fixed overhead and justoci reaches ~220 MiB/s (NTFS write bandwidth). Adding Gzip or Zstd compression reduces disk I/O at the cost of CPU; actual throughput depends on codec and compression ratio.
 
 ### Implication for real use cases
 
-Firmware images, ML model weights, and VM rootfs blobs are typically 10–500 MB. In that range:
+Firmware images, ML model weights, and VM rootfs blobs are typically 10–500 MB. justoci runs at **100–220 MiB/s** in that range — a 100 MB artifact takes ~450 ms, a 500 MB rootfs ~2.5 s. A full build-then-push pipeline adds a further ~34 ms for the push step.
 
-- **Local disk only**: justoci runs at **100–220 MiB/s** — a 100 MB artifact takes ~450 ms, a 500 MB rootfs ~2.5 s.
-- **Push to registry**: publish runs at **~477 MiB/s** at 16 MB+, skipping the intermediate OCI layout write.
-- **Both paths**: build once to disk with justoci, push later with publish — adds ~15–35 ms per step.
+## Comparison 1 — push to registry: `oci_publish` vs oras
 
-## Comparison — three-way: justoci vs publish vs oras
+Both runners push a pre-built OCI layout to a local `registry:2` container over loopback. This is an apples-to-apples comparison: same operation, different implementations.
 
-**Note**: the three runners measure different operations at different layers of the OCI stack. justoci builds to local disk (no network). publish pushes in-process over loopback HTTP. oras invokes an external subprocess. They are not interchangeable, but the comparison gives order-of-magnitude orientation for pipeline design.
-
-| Payload | justoci (local disk) | publish (in-process HTTP) | oras (subprocess HTTP) |
+| Payload | publish (in-process) | oras (subprocess) | publish advantage |
 |---|---|---|---|
-| 4 KB | **14.5 ms** / 276 KiB/s | 39.0 ms / 103 KiB/s | 181.9 ms / 22 KiB/s |
-| 1 MB | **17.7 ms** / 56.7 MiB/s | 33.4 ms / 29.9 MiB/s | 168.0 ms / 5.95 MiB/s |
-| 16 MB | 72.7 ms / 220 MiB/s | **33.6 ms** / 477 MiB/s | 233.8 ms / 68.4 MiB/s |
+| 4 KB | **39.0 ms** | 181.9 ms | 4.7× |
+| 1 MB | **33.4 ms** | 168.0 ms | 5.0× |
+| 16 MB | **33.6 ms** / 477 MiB/s | 233.8 ms / 68.4 MiB/s | 7.0× |
 
-**justoci vs oras**: 12.5× / 9.5× / 3.2× faster (4 KB / 1 MB / 16 MB).
+oras fixed cost is ~170 ms — Go subprocess spawn plus the first HTTP round-trip. publish eliminates subprocess spawn entirely; the ~34 ms floor is the loopback HTTP cost alone (HEAD×N blobs + manifest PUT). At 16 MB the advantage grows further because oras's subprocess I/O path bottlenecks before the loopback link saturates.
 
-**publish vs oras**: 4.7× / 5.0× / 7.0× faster (4 KB / 1 MB / 16 MB). The in-process HTTP path eliminates subprocess spawn (~150 ms) and re-encodes nothing — the layout is pre-built at bench startup.
+## Comparison 2 — build step: `oci_build` (standalone reference)
 
-**justoci vs publish at 16 MB**: publish is 2.2× faster — NTFS write loses to loopback TCP at this payload size.
+`oci_build::build` is not a push tool — it writes an OCI layout to local disk with no network involved. It is listed here for pipeline designers who need to budget the build cost separately from the push cost.
+
+| Payload | justoci build (local disk) |
+|---|---|
+| 4 KB | 14.5 ms |
+| 1 MB | 17.7 ms |
+| 16 MB | 72.7 ms / 220 MiB/s |
+
+A full build-then-push pipeline pays both: ~15–73 ms to build + ~34–39 ms to push. For pipelines that push to a registry on every run, the two costs add linearly.
 
 ## Reproducing
 

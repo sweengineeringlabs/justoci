@@ -121,7 +121,7 @@ tr:nth-child(even) td{background:var(--surface)}
       <a href="#overhead">Fixed overhead</a>
       <a href="#scaling">Throughput scaling</a>
       <a href="#usecases">Real use cases</a>
-      <a href="#comparison">Three-way comparison</a>
+      <a href="#comparison">publish vs oras</a>
       <a href="#reproduce">Reproduce</a>
     </nav>
   </div>
@@ -154,26 +154,12 @@ tr:nth-child(even) td{background:var(--surface)}
     <h2>Results</h2>
     <p>Measured on Windows 11 x86-64, Criterion 0.5, 100 samples, 3 s warmup, release profile. Output written to <code>tempfile::TempDir</code> on NTFS. Source blob pre-written once and re-used; fresh output directory per iteration.</p>
 
-    <h3>oci_build::build — local disk (justoci)</h3>
     <table>
       <tr><th>Payload</th><th>Mean time</th><th>Throughput</th></tr>
       <tr><td>4 KB</td><td><strong>14.5 ms</strong></td><td>276 KiB/s</td></tr>
       <tr><td>1 MB</td><td><strong>17.7 ms</strong></td><td>56.7 MiB/s</td></tr>
       <tr><td>16 MB</td><td><strong>72.7 ms</strong></td><td>220 MiB/s</td></tr>
     </table>
-
-    <h3>oci_publish::publish — in-process HTTP push (publish)</h3>
-    <p>OCI layout built once at startup; each iteration pushes with a unique tag so the manifest PUT fires every time. Blobs are deduplicated by the registry after the first warmup iteration — steady state is HEAD×N + manifest PUT.</p>
-    <table>
-      <tr><th>Payload</th><th>Mean time</th><th>Throughput</th></tr>
-      <tr><td>4 KB</td><td><strong>39.0 ms</strong></td><td>103 KiB/s</td></tr>
-      <tr><td>1 MB</td><td><strong>33.4 ms</strong></td><td>29.9 MiB/s</td></tr>
-      <tr><td>16 MB</td><td><strong>33.6 ms</strong></td><td>477 MiB/s</td></tr>
-    </table>
-
-    <div class="callout green">
-      At 16 MB publish (477 MiB/s) beats justoci (220 MiB/s) — loopback TCP saturates faster than NTFS random-write with rename overhead. For pipelines that push to a registry anyway, <code>oci_publish</code> skips the intermediate disk write.
-    </div>
 
     <div class="callout">
       For justoci: the 4 KB and 1 MB cases take nearly identical time. Fixed overhead — not data processing — is the entire cost for small artifacts.
@@ -277,30 +263,21 @@ tr:nth-child(even) td{background:var(--surface)}
   </section>
 
   <section id="comparison">
-    <h2>Three-way comparison: justoci vs publish vs oras</h2>
-    <p>All three runners measured in the same Criterion harness — 100 samples, 3 s warmup, release profile. justoci writes to local NTFS. publish and oras push to a local <code>registry:2</code> container over loopback.</p>
-
-    <div class="callout amber">
-      <strong>These are different operations.</strong> justoci builds an OCI layout to local disk (no network). publish pushes in-process over loopback HTTP. oras invokes an external Go subprocess. They are not interchangeable — the comparison gives order-of-magnitude orientation for pipeline design, not apples-to-apples benchmarking.
-    </div>
+    <h2>Push to registry: <code>oci_publish</code> vs oras</h2>
+    <p>Both runners push a pre-built OCI layout to a local <code>registry:2</code> container over loopback — same operation, different implementations. This is an apples-to-apples comparison.</p>
 
     <table>
-      <tr><th>Payload</th><th>justoci (local disk)</th><th>publish (in-process HTTP)</th><th>oras (subprocess HTTP)</th></tr>
-      <tr><td>4 KB</td><td><strong>14.5 ms</strong> / 276 KiB/s</td><td>39.0 ms / 103 KiB/s</td><td>181.9 ms / 22 KiB/s</td></tr>
-      <tr><td>1 MB</td><td><strong>17.7 ms</strong> / 56.7 MiB/s</td><td>33.4 ms / 29.9 MiB/s</td><td>168.0 ms / 5.95 MiB/s</td></tr>
-      <tr><td>16 MB</td><td>72.7 ms / 220 MiB/s</td><td><strong>33.6 ms</strong> / 477 MiB/s</td><td>233.8 ms / 68.4 MiB/s</td></tr>
+      <tr><th>Payload</th><th>publish (in-process)</th><th>oras (subprocess)</th><th>publish advantage</th></tr>
+      <tr><td>4 KB</td><td><strong>39.0 ms</strong></td><td>181.9 ms</td><td>4.7×</td></tr>
+      <tr><td>1 MB</td><td><strong>33.4 ms</strong></td><td>168.0 ms</td><td>5.0×</td></tr>
+      <tr><td>16 MB</td><td><strong>33.6 ms</strong> / 477 MiB/s</td><td>233.8 ms / 68.4 MiB/s</td><td>7.0×</td></tr>
     </table>
 
-    <h3>justoci vs oras: 12.5× / 9.5× / 3.2×</h3>
-    <p>oras fixed overhead is ~170 ms — Go subprocess spawn plus the HTTP round-trip to a loopback registry. Both 4 KB and 1 MB are dominated by this floor. At 16 MB data transfer closes the gap slightly (oras reaches ~68 MiB/s), but justoci on NTFS stays 3.2× ahead.</p>
+    <p>oras fixed cost is ~170 ms — Go subprocess spawn plus the first HTTP round-trip. publish eliminates subprocess spawn entirely; the ~34 ms floor is the loopback HTTP cost alone (HEAD per blob + manifest PUT). At 16 MB the advantage grows further because oras's subprocess I/O path bottlenecks before the loopback link saturates.</p>
 
-    <h3>publish vs oras: 4.7× / 5.0× / 7.0×</h3>
-    <p>Eliminating the subprocess (~150 ms spawn overhead) and pushing in-process via <code>oci_publish</code> beats oras at every payload. At 16 MB the advantage grows: publish hits 477 MiB/s while oras caps at 68 MiB/s — the subprocess I/O path bottlenecks before the loopback link saturates.</p>
-
-    <h3>The 16 MB crossover: publish beats justoci</h3>
-    <p>At 16 MB, publish (33.6 ms / 477 MiB/s) is 2.2× faster than justoci (72.7 ms / 220 MiB/s). NTFS random-write with atomic rename overhead (~200–300 MB/s effective) loses to loopback TCP (~530 MB/s after blob dedup). For pipelines that push to a registry anyway, <code>oci_publish</code> skips the intermediate OCI layout write entirely.</p>
-
-    <p>The operations are complementary: build once to disk with justoci for offline/air-gapped use, push with publish when the registry is the destination. Or call publish directly and skip the disk step altogether at large payload sizes.</p>
+    <div class="callout">
+      <strong>Note on scope.</strong> The justoci bench (<code>oci_build::build</code>) measures the build step — writing an OCI layout to disk, no network. That is a different operation and not included in this comparison. A full pipeline pays both: ~15–73 ms to build + ~34–39 ms to push.
+    </div>
   </section>
 
   <section id="reproduce">
