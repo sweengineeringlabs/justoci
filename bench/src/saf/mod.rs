@@ -16,15 +16,6 @@ pub fn load_build_runners() -> Vec<Box<dyn Runner>> {
         .collect()
 }
 
-pub fn load_sign_runners() -> Vec<Box<dyn Runner>> {
-    load_config()
-        .case
-        .into_iter()
-        .filter(|c| c.bench == "sign")
-        .filter_map(make_runner)
-        .collect()
-}
-
 pub fn load_push_runners() -> Vec<Box<dyn Runner>> {
     load_config()
         .case
@@ -47,16 +38,12 @@ fn make_runner(case: CaseConfig) -> Option<Box<dyn Runner>> {
     match case.runner.as_str() {
         #[cfg(feature = "just-build")]
         "just-build" => Some(Box::new(crate::core::just_build::JustBuild::new(case))),
-        #[cfg(feature = "just-sign")]
-        "just-sign" => Some(Box::new(crate::core::just_sign::JustSign::new(case))),
         #[cfg(feature = "just-push")]
         "just-push" => Some(Box::new(crate::core::just_push::JustPush::new(case))),
         #[cfg(feature = "just-pipeline")]
         "just-pipeline" => Some(Box::new(crate::core::just_pipeline::JustPipeline::new(case))),
         #[cfg(feature = "oras")]
         "oras" => Some(Box::new(crate::spi::oras::Oras::new(case))),
-        #[cfg(feature = "cosign")]
-        "cosign" => Some(Box::new(crate::spi::cosign::Cosign::new(case))),
         #[cfg(all(feature = "oras", feature = "cosign"))]
         "oras-cosign" => Some(Box::new(crate::spi::oras_cosign::OrasCosign::new(case))),
         other => {

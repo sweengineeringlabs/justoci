@@ -2,20 +2,19 @@
 name        = "swe_justoci_bench"
 version     = "0.1.0"
 edition     = "2021"
-description = "SEA-layered Criterion benchmarks: build / sign / push / pipeline, just* vs oras+cosign."
+description = "SEA-layered Criterion benchmarks: build / push / pipeline, just* vs oras+cosign."
 license        = "Apache-2.0"
 repository     = "https://github.com/sweengineeringlabs/justoci"
 authors        = ["SWE Engineering Labs"]
-# Intentionally not inheriting workspace MSRV: just-sign depends on
+# Intentionally not inheriting workspace MSRV: just-pipeline depends on
 # swe_justsign_sign which requires 1.88; workspace MSRV is 1.86.
 # This crate is dev tooling and is never published.
 
 [features]
 default       = []
 just-build    = ["dep:oci-build", "dep:spec"]
-just-sign     = ["dep:swe_justsign_sign", "dep:p256", "dep:rand_chacha", "dep:rand_core"]
 just-push     = ["dep:oci-build", "dep:oci-publish", "dep:spec"]
-just-pipeline = ["just-build", "just-sign", "just-push"]
+just-pipeline = ["just-build", "just-push", "dep:swe_justsign_sign", "dep:p256", "dep:rand_chacha", "dep:rand_core"]
 oras          = []
 cosign        = []
 
@@ -37,10 +36,6 @@ criterion = { version = "0.5", features = ["html_reports"] }
 
 [[bench]]
 name    = "build"
-harness = false
-
-[[bench]]
-name    = "sign"
 harness = false
 
 [[bench]]
