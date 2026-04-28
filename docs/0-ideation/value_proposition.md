@@ -2,6 +2,18 @@
 
 **Audience**: Stakeholders, product leads
 
+## Numbers at a glance
+
+| | justoci | oras + cosign + syft (status quo) |
+|---|---|---|
+| Dep count (transitive) | **423** | ~600+ (three separate dep graphs) |
+| Binary size | **14 MB** | ~95–120 MB (three binaries) |
+| Attestation by default | **yes** | no (manual per pillar) |
+| Single spec file | **yes** | no |
+| Windows native | **yes** | cosign has no Windows build |
+| OCI 1.1 referrers | **yes** | oras: yes; cosign: yes; integration: manual |
+| Build throughput (>16 MB) | **~200 MiB/s** | similar (I/O bound at large sizes) |
+
 ## The opinion
 
 **Attestation is on by default.**

@@ -250,3 +250,22 @@ code as `registry:2`, no Docker dependency, single Go binary.
 - [Zot](https://zotregistry.dev/) — OCI-native self-hosted.
 - [ORAS](https://oras.land/) — the tool that popularised non-container artifacts on OCI registries.
 - [OCI 1.1 Referrers explainer](https://opencontainers.org/posts/blog/2024-03-13-image-and-distribution-1-1/) — design + rollout.
+
+---
+
+## Footprint
+
+Measured on 2026-04-28, release profile, x86-64 Windows host.
+Dep count: `cargo tree -e no-dev --prefix none | sort -u | wc -l` (unique crates, transitive).
+Binary size: stripped release binary.
+
+| Tool | Dep count | Binary size | Language | Notes |
+|------|----------:|-------------|----------|-------|
+| **justoci** | **423** | **14 MB** | Rust | Full pipeline: build + sign + SBOM + push + verify |
+| `oras` CLI | ~100 Go modules | ~20 MB | Go | Push/pull only; no sign/SLSA/SBOM |
+| `cosign` | ~300 Go modules | ~50 MB | Go | Sign/verify only; no push/SBOM |
+| `syft` / `cdxgen` | ~200+ Go/Node modules | ~25–50 MB | Go/Node | SBOM only; no push/sign |
+
+justoci at 423 deps is the highest footprint of the three sibling libraries. That is the honest cost of bundling five concerns in one binary: OCI wire protocol (oci-spec-rs, reqwest), Sigstore signing (the full justsign stack), SBOM generation, SLSA provenance, and the manifest/referrer model.
+
+The comparison is not `justoci` vs any single alternative — no single alternative covers the full pipeline. The cost of the status quo (oras + cosign + syft + custom bash glue) is ~95–120 MB across three binaries with no shared dep management and no cross-tool error handling. justoci consolidates that into 14 MB with a single lockfile.
