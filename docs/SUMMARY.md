@@ -4,6 +4,7 @@
 
 [Introduction](./README.md)
 [Executive summary](./executive_summary.md)
+[Glossary](./glossary.md)
 
 # Ideation
 
@@ -25,6 +26,8 @@
 - [CLI surface](./3-design/cli_surface.md)
 - [Production guarantees](./3-design/production_guarantees.md)
 - [Integration guide](./3-design/integration_guide.md)
+- [Architecture decisions](./3-design/adr/README.md)
+- [Compliance checklist](./3-design/compliance/compliance_checklist.md)
 
 # Development
 
@@ -41,3 +44,7 @@
 - [Auth providers](./6-deployment/auth_providers.md)
 - [Verify-policy format](./6-deployment/verify_policy.md)
 - [Troubleshooting](./6-deployment/troubleshooting.md)
+
+# Operations
+
+- [Operations](./7-operation/README.md)
