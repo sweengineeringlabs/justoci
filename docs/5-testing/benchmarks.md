@@ -53,4 +53,4 @@ Run `scripts/bench/compare_oras.sh` on Linux with Docker available. The script t
 cargo bench -p swe_justoci_oci_build --bench build_layout
 ```
 
-HTML report: `target/criterion/build_oci_artifact/report/index.html`
+The bench generates an HTML report at `target/criterion/build_oci_artifact/report/index.html` (ephemeral — deleted by `cargo clean`; re-run the bench to regenerate).
