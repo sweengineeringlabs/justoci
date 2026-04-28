@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use criterion::{BatchSize, BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use tempfile::TempDir;
 
@@ -23,8 +21,12 @@ fn bench_push(c: &mut Criterion) {
 
 criterion_group! {
     name    = benches;
-    config  = Criterion::default()
-        .output_directory(Path::new("../docs/5-testing/bench_results"));
+    config  = {
+        let out = dirs::data_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from(".local/share"))
+            .join("justoci/bench_results");
+        Criterion::default().output_directory(&out)
+    };
     targets = bench_push
 }
 criterion_main!(benches);
