@@ -27,12 +27,7 @@ impl JustPush {
             .unwrap_or_else(|| panic!("just-push case '{}': missing param 'payload_bytes'", case.label))
             as u64;
 
-        let registry = case
-            .params
-            .get("registry")
-            .and_then(|v| v.as_str())
-            .unwrap_or("localhost:5000")
-            .to_owned();
+        let registry = crate::api::resolve_registry(&case);
 
         if std::env::var("OCIMAGE_ALLOW_INSECURE").as_deref() != Ok("1") {
             panic!(

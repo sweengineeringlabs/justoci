@@ -25,12 +25,7 @@ impl Oras {
             .unwrap_or_else(|| panic!("oras case '{}': missing param 'payload_bytes'", case.label))
             as u64;
 
-        let registry = case
-            .params
-            .get("registry")
-            .and_then(|v| v.as_str())
-            .unwrap_or("localhost:5000")
-            .to_owned();
+        let registry = crate::api::resolve_registry(&case);
 
         let tmp = TempDir::new().expect("oras bench: failed to create work dir");
         let payload: Vec<u8> = (0..payload_bytes as usize).map(|i| i as u8).collect();

@@ -3,6 +3,16 @@ use std::path::Path;
 
 use serde::Deserialize;
 
+/// Resolve the registry address for a bench case.
+///
+/// Priority: `BENCH_REGISTRY` env var → `registry` param in bench.toml → `localhost:5000`.
+pub fn resolve_registry(case: &CaseConfig) -> String {
+    std::env::var("BENCH_REGISTRY")
+        .ok()
+        .or_else(|| case.params.get("registry").and_then(|v| v.as_str()).map(str::to_owned))
+        .unwrap_or_else(|| "localhost:5000".to_owned())
+}
+
 pub trait Runner: Send + Sync {
     fn label(&self) -> &str;
     fn bytes(&self) -> u64;
