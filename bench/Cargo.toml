@@ -1,0 +1,30 @@
+[package]
+name        = "swe_justoci_bench"
+version     = "0.1.0"
+edition     = "2021"
+description = "TOML-driven Criterion benchmarks for the justoci workspace."
+license        = "Apache-2.0"
+repository     = "https://github.com/sweengineeringlabs/justoci"
+authors        = ["SWE Engineering Labs"]
+rust-version.workspace = true
+
+[features]
+default  = ["justoci"]
+justoci  = ["dep:oci-build", "dep:spec", "dep:tempfile"]
+
+[dependencies]
+serde     = { version = "1", features = ["derive"] }
+toml      = "0.8"
+oci-build = { workspace = true, optional = true }
+spec      = { workspace = true, optional = true }
+tempfile  = { version = "3", optional = true }
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name    = "build"
+harness = false
+
+[lints.rust]
+unsafe_code = "forbid"

@@ -1,0 +1,23 @@
+# Benchmark cases for the justoci workspace.
+#
+# Add entries here to bench additional runners or payload sizes.
+# `runner` must match a compiled-in feature flag (e.g. "justoci").
+# All fields beyond `runner` and `label` are forwarded as params to
+# the runner — see each runner's source for required keys.
+
+# ── justoci (in-process, pure Rust) ─────────────────────────────────────────
+
+[[case]]
+runner        = "justoci"
+label         = "justoci/4kb"
+payload_bytes = 4096
+
+[[case]]
+runner        = "justoci"
+label         = "justoci/1mb"
+payload_bytes = 1048576
+
+[[case]]
+runner        = "justoci"
+label         = "justoci/16mb"
+payload_bytes = 16777216

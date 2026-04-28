@@ -6,6 +6,7 @@ members = [
     "build",
     "publish",
     "cli",
+    "bench",
 ]
 
 # Single source of truth for MSRV across the workspace. Each crate's
