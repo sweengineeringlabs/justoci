@@ -15,12 +15,7 @@ pub fn set_registry_override(addr: String) {
 ///
 /// Priority: in-process override → `BENCH_REGISTRY` env var → `registry` param in bench.toml → `localhost:5000`.
 #[cfg_attr(
-    not(any(
-        feature = "just-build",
-        feature = "just-push",
-        feature = "oras",
-        feature = "cosign",
-    )),
+    not(any(feature = "just-push", feature = "oras", feature = "cosign")),
     allow(dead_code)
 )]
 pub fn resolve_registry(case: &CaseConfig) -> String {
