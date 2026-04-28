@@ -1,0 +1,48 @@
+[package]
+name        = "swe_justoci_e2e_bench"
+version     = "0.1.0"
+edition     = "2021"
+description = "End-to-end Criterion benchmark: justoci+justsign+publish vs oras+cosign."
+license        = "Apache-2.0"
+repository     = "https://github.com/sweengineeringlabs/justoci"
+authors        = ["SWE Engineering Labs"]
+# Intentionally unset: this crate depends on swe_justsign_sign which
+# requires 1.88, while the justoci workspace MSRV is 1.86. As a
+# bench-only crate it is never published and inheriting the workspace
+# pin would be misleading. Verify with whatever stable is installed.
+
+[features]
+default       = ["rust-pipeline"]
+rust-pipeline = [
+    "dep:oci-build",
+    "dep:oci-publish",
+    "dep:spec",
+    "dep:swe_justsign_sign",
+    "dep:p256",
+    "dep:rand_chacha",
+    "dep:rand_core",
+    "dep:tempfile",
+]
+oras-cosign   = ["dep:tempfile"]
+
+[dependencies]
+serde       = { version = "1", features = ["derive"] }
+toml        = "0.8"
+oci-build   = { workspace = true, optional = true }
+oci-publish = { workspace = true, optional = true }
+spec        = { workspace = true, optional = true }
+swe_justsign_sign = { workspace = true, optional = true }
+p256        = { version = "0.13", default-features = false, features = ["std", "ecdsa"], optional = true }
+rand_chacha = { version = "0.3",  default-features = false, optional = true }
+rand_core   = { version = "0.6",  default-features = false, optional = true }
+tempfile    = { version = "3", optional = true }
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name    = "pipeline"
+harness = false
+
+[lints.rust]
+unsafe_code = "forbid"

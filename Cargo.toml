@@ -7,6 +7,7 @@ members = [
     "publish",
     "cli",
     "bench",
+    "e2e",
 ]
 
 # Single source of truth for MSRV across the workspace. Each crate's
