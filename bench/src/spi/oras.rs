@@ -4,20 +4,17 @@ use std::process::{Command, Stdio};
 
 use tempfile::TempDir;
 
-use crate::{BuildRunner, CaseConfig};
+use crate::api::{CaseConfig, Runner};
 
-pub struct OrasRunner {
+pub struct Oras {
     label: String,
     payload_bytes: u64,
     registry_ref: String,
-    /// Working directory passed to oras so we can use a bare filename instead
-    /// of an absolute path. oras 1.x on Windows rejects absolute paths in the
-    /// `file:media-type` argument; using a relative name avoids the issue.
     work_dir: PathBuf,
     _tmp: TempDir,
 }
 
-impl OrasRunner {
+impl Oras {
     pub fn new(case: CaseConfig) -> Self {
         which_oras();
 
@@ -36,12 +33,10 @@ impl OrasRunner {
             .to_owned();
 
         let tmp = TempDir::new().expect("oras bench: failed to create work dir");
-
         let payload: Vec<u8> = (0..payload_bytes as usize).map(|i| i as u8).collect();
         fs::write(tmp.path().join("payload.bin"), &payload)
             .expect("oras bench: failed to write payload");
 
-        // OCI tags must not contain '/'; derive a stable tag from the label.
         let tag = case.label.replace('/', "-");
         let registry_ref = format!("{registry}/bench-artifact:{tag}");
         let work_dir = tmp.path().to_path_buf();
@@ -50,16 +45,15 @@ impl OrasRunner {
     }
 }
 
-impl BuildRunner for OrasRunner {
+impl Runner for Oras {
     fn label(&self) -> &str {
         &self.label
     }
 
-    fn bytes_written(&self) -> u64 {
+    fn bytes(&self) -> u64 {
         self.payload_bytes
     }
 
-    // `output_path` is unused — oras pushes to the registry, not to local disk.
     fn run(&self, _output_path: &Path) {
         let status = Command::new("oras")
             .current_dir(&self.work_dir)
@@ -84,7 +78,7 @@ fn which_oras() {
         .stderr(Stdio::null())
         .status()
         .unwrap_or_else(|_| panic!(
-            "oras not found on PATH — the oras bench requires oras 1.x \
-             and a local registry running (e.g. docker run -d -p 5000:5000 registry:2)"
+            "oras not found on PATH — oras bench requires oras 1.x and a local registry \
+             (docker run -d -p 5000:5000 registry:2)"
         ));
 }

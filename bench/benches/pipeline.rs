@@ -1,11 +1,11 @@
 use criterion::{BatchSize, BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use tempfile::TempDir;
 
-use swe_justoci_bench::{Runner, load_build_runners};
+use swe_justoci_bench::{Runner, load_pipeline_runners};
 
-fn bench_build(c: &mut Criterion) {
-    let runners = load_build_runners();
-    let mut group = c.benchmark_group("build");
+fn bench_pipeline(c: &mut Criterion) {
+    let runners = load_pipeline_runners();
+    let mut group = c.benchmark_group("pipeline");
     for runner in &runners {
         group.throughput(Throughput::Bytes(runner.bytes()));
         group.bench_function(BenchmarkId::from_parameter(runner.label()), |b| {
@@ -19,5 +19,5 @@ fn bench_build(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_build);
+criterion_group!(benches, bench_pipeline);
 criterion_main!(benches);
