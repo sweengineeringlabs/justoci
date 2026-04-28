@@ -33,10 +33,12 @@ impl JustociRunner {
         // Forward slashes so the TOML path string works on Windows.
         let blob_str = blob_path.to_string_lossy().replace('\\', "/");
 
+        // Spec id tag must match [a-zA-Z0-9._-]; replace '/' in label.
+        let id_tag = case.label.replace('/', "-");
         let toml = format!(
             r#"
 spec_version = "0"
-id           = "bench-artifact:{label}"
+id           = "bench-artifact:{id_tag}"
 kind         = "oci_artifact"
 description  = "bench"
 
@@ -44,7 +46,6 @@ description  = "bench"
 source     = "{blob_str}"
 media_type = "application/octet-stream"
 "#,
-            label = case.label,
         );
 
         let spec = parse_and_validate_str(&toml, work.path().to_path_buf())

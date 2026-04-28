@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>justoci benchmarks — OCI layout assembly at 200 MiB/s</title>
+<title>justoci benchmarks — OCI layout assembly at 223 MiB/s</title>
 <style>
 :root {
   --bg: #0f1117;
@@ -127,9 +127,9 @@ tr:nth-child(even) td{background:var(--surface)}
   </div>
   <div class="key-numbers">
     <h2>Key numbers</h2>
-    <div class="kn-item"><span>Peak throughput</span><span class="kn-val">197 MiB/s</span></div>
-    <div class="kn-item"><span>Fixed overhead</span><span class="kn-val">~20 ms</span></div>
-    <div class="kn-item"><span>100 MB artifact</span><span class="kn-val">~500 ms</span></div>
+    <div class="kn-item"><span>Peak throughput</span><span class="kn-val">223 MiB/s</span></div>
+    <div class="kn-item"><span>Fixed overhead</span><span class="kn-val">~18 ms</span></div>
+    <div class="kn-item"><span>100 MB artifact</span><span class="kn-val">~450 ms</span></div>
     <div class="kn-item"><span>500 MB rootfs</span><span class="kn-val">~2.5 s</span></div>
     <div class="kn-item"><span>Subprocess needed</span><span class="kn-val">None</span></div>
   </div>
@@ -138,13 +138,13 @@ tr:nth-child(even) td{background:var(--surface)}
 
 <main>
   <section class="hero">
-    <h1>justoci: OCI layout assembly at 200 MiB/s</h1>
+    <h1>justoci: OCI layout assembly at 223 MiB/s</h1>
     <p class="subtitle">One TOML spec file → attested OCI artifact, in-process. No Docker, no registry, no subprocess. Here is what it costs.</p>
 
     <div class="stat-cards">
-      <div class="card"><div class="card-val">197 MiB/s</div><div class="card-sub">Peak throughput (16 MB layer)</div></div>
-      <div class="card"><div class="card-val">~20 ms</div><div class="card-sub">Fixed overhead per build</div></div>
-      <div class="card"><div class="card-val">~500 ms</div><div class="card-sub">100 MB artifact end-to-end</div></div>
+      <div class="card"><div class="card-val">223 MiB/s</div><div class="card-sub">Peak throughput (16 MB layer)</div></div>
+      <div class="card"><div class="card-val">~18 ms</div><div class="card-sub">Fixed overhead per build</div></div>
+      <div class="card"><div class="card-val">~450 ms</div><div class="card-sub">100 MB artifact end-to-end</div></div>
       <div class="card"><div class="card-val">~2.5 s</div><div class="card-sub">500 MB VM rootfs</div></div>
       <div class="card"><div class="card-val">0</div><div class="card-sub">External processes required</div></div>
     </div>
@@ -156,9 +156,9 @@ tr:nth-child(even) td{background:var(--surface)}
 
     <table>
       <tr><th>Payload</th><th>Mean time</th><th>Throughput</th></tr>
-      <tr><td>4 KB</td><td><strong>21.7 ms</strong></td><td>184 KiB/s</td></tr>
-      <tr><td>1 MB</td><td><strong>21.9 ms</strong></td><td>45.7 MiB/s</td></tr>
-      <tr><td>16 MB</td><td><strong>81.2 ms</strong></td><td>197 MiB/s</td></tr>
+      <tr><td>4 KB</td><td><strong>17.6 ms</strong></td><td>227 KiB/s</td></tr>
+      <tr><td>1 MB</td><td><strong>19.5 ms</strong></td><td>51.3 MiB/s</td></tr>
+      <tr><td>16 MB</td><td><strong>71.7 ms</strong></td><td>223 MiB/s</td></tr>
     </table>
 
     <div class="callout">
@@ -197,7 +197,7 @@ tr:nth-child(even) td{background:var(--surface)}
 
   <section id="overhead">
     <h2>Fixed overhead breakdown</h2>
-    <p>The ~20 ms floor is five operations that happen regardless of payload size. At 4 KB, this is 100% of the cost. At 16 MB, it is ~25% of the cost.</p>
+    <p>The ~18 ms floor is five operations that happen regardless of payload size. At 4 KB, this is 100% of the cost. At 16 MB, it is ~25% of the cost.</p>
 
     <div class="bar-chart">
       <div class="bar-row">
@@ -222,7 +222,7 @@ tr:nth-child(even) td{background:var(--surface)}
       </div>
       <div class="bar-row">
         <div class="bar-label">Data (16 MB, uncompressed)</div>
-        <div class="bar-track"><div class="bar-fill data" style="width:75%">~60 ms (proportional)</div></div>
+        <div class="bar-track"><div class="bar-fill data" style="width:75%">~54 ms (proportional)</div></div>
       </div>
     </div>
 
@@ -231,13 +231,13 @@ tr:nth-child(even) td{background:var(--surface)}
 
   <section id="scaling">
     <h2>Throughput scaling</h2>
-    <p>At 16 MB, data processing (~60 ms) overtakes the fixed overhead and throughput reaches ~200 MiB/s. This is NTFS write bandwidth for uncompressed <code>application/octet-stream</code> layers — the bottleneck shifts from metadata to disk I/O.</p>
+    <p>At 16 MB, data processing (~54 ms) overtakes the fixed overhead and throughput reaches ~223 MiB/s. This is NTFS write bandwidth for uncompressed <code>application/octet-stream</code> layers — the bottleneck shifts from metadata to disk I/O.</p>
 
     <table>
       <tr><th>Payload</th><th>Fixed overhead</th><th>Data cost</th><th>Bottleneck</th></tr>
-      <tr><td>4 KB</td><td>~21.7 ms (100%)</td><td>&lt;0.1 ms</td><td>Metadata ops</td></tr>
-      <tr><td>1 MB</td><td>~21.5 ms (98%)</td><td>~0.4 ms</td><td>Metadata ops</td></tr>
-      <tr><td>16 MB</td><td>~21 ms (26%)</td><td>~60 ms</td><td>NTFS write bandwidth</td></tr>
+      <tr><td>4 KB</td><td>~17.6 ms (100%)</td><td>&lt;0.1 ms</td><td>Metadata ops</td></tr>
+      <tr><td>1 MB</td><td>~17.6 ms (90%)</td><td>~1.9 ms</td><td>Metadata ops</td></tr>
+      <tr><td>16 MB</td><td>~18 ms (25%)</td><td>~54 ms</td><td>NTFS write bandwidth</td></tr>
     </table>
 
     <div class="callout green">
@@ -247,7 +247,7 @@ tr:nth-child(even) td{background:var(--surface)}
 
   <section id="usecases">
     <h2>Real use cases</h2>
-    <p>Firmware images, ML model weights, and VM rootfs blobs are typically 10–500 MB. In that range justoci runs at <strong>100–200 MiB/s</strong>.</p>
+    <p>Firmware images, ML model weights, and VM rootfs blobs are typically 10–500 MB. In that range justoci runs at <strong>100–223 MiB/s</strong>.</p>
 
     <table>
       <tr><th>Artifact</th><th>Typical size</th><th>Estimated time</th></tr>
@@ -289,10 +289,10 @@ tr:nth-child(even) td{background:var(--surface)}
 cd justoci</code></pre>
 
     <p><strong>2. Run all cases</strong></p>
-    <pre><code>cargo bench -p swe_justoci_oci_build --bench build_layout</code></pre>
+    <pre><code>cargo bench -p swe_justoci_bench --bench build</code></pre>
 
     <p><strong>3. Run a single case</strong></p>
-    <pre><code>cargo bench -p swe_justoci_oci_build --bench build_layout -- "build_oci_artifact/16mb"</code></pre>
+    <pre><code>cargo bench -p swe_justoci_bench --bench build -- "build_oci_artifact/16mb"</code></pre>
 
     <p><strong>4. Compare against oras (Linux with Docker)</strong></p>
     <pre><code>bash scripts/bench/compare_oras.sh</code></pre>
