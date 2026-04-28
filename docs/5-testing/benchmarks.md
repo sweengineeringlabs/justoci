@@ -80,29 +80,27 @@ At 16 MB, data processing overtakes the fixed overhead and justoci reaches ~220 
 
 Firmware images, ML model weights, and VM rootfs blobs are typically 10–500 MB. justoci runs at **100–220 MiB/s** in that range — a 100 MB artifact takes ~450 ms, a 500 MB rootfs ~2.5 s. A full build-then-push pipeline adds a further ~34 ms for the push step.
 
-## Comparison 1 — push to registry: `oci_publish` vs oras
+## Comparison — end-to-end: justoci + publish vs oras
 
-Both runners push a pre-built OCI layout to a local `registry:2` container over loopback. This is an apples-to-apples comparison: same operation, different implementations.
+oras combines build and push in one subprocess call. The equivalent Rust pipeline is `oci_build::build` + `oci_publish::publish`. Both produce the same result: artifact in a registry. The combined times are measured separately and summed.
 
-| Payload | publish (in-process) | oras (subprocess) | publish advantage |
+| Payload | justoci + publish | oras (build+push) | advantage |
+|---|---|---|---|
+| 4 KB | **53.5 ms** (14.5 + 39.0) | 181.9 ms | 3.4× |
+| 1 MB | **51.1 ms** (17.7 + 33.4) | 168.0 ms | 3.3× |
+| 16 MB | **106.3 ms** (72.7 + 33.6) | 233.8 ms | 2.2× |
+
+### Push-only (pre-built layout)
+
+If the OCI layout already exists on disk the build cost is not paid again. The relevant comparison is push only:
+
+| Payload | publish (push only) | oras | advantage |
 |---|---|---|---|
 | 4 KB | **39.0 ms** | 181.9 ms | 4.7× |
 | 1 MB | **33.4 ms** | 168.0 ms | 5.0× |
 | 16 MB | **33.6 ms** / 477 MiB/s | 233.8 ms / 68.4 MiB/s | 7.0× |
 
 oras fixed cost is ~170 ms — Go subprocess spawn plus the first HTTP round-trip. publish eliminates subprocess spawn entirely; the ~34 ms floor is the loopback HTTP cost alone (HEAD×N blobs + manifest PUT). At 16 MB the advantage grows further because oras's subprocess I/O path bottlenecks before the loopback link saturates.
-
-## Comparison 2 — build step: `oci_build` (standalone reference)
-
-`oci_build::build` is not a push tool — it writes an OCI layout to local disk with no network involved. It is listed here for pipeline designers who need to budget the build cost separately from the push cost.
-
-| Payload | justoci build (local disk) |
-|---|---|
-| 4 KB | 14.5 ms |
-| 1 MB | 17.7 ms |
-| 16 MB | 72.7 ms / 220 MiB/s |
-
-A full build-then-push pipeline pays both: ~15–73 ms to build + ~34–39 ms to push. For pipelines that push to a registry on every run, the two costs add linearly.
 
 ## Reproducing
 

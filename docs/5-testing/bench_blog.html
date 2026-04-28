@@ -263,21 +263,27 @@ tr:nth-child(even) td{background:var(--surface)}
   </section>
 
   <section id="comparison">
-    <h2>Push to registry: <code>oci_publish</code> vs oras</h2>
-    <p>Both runners push a pre-built OCI layout to a local <code>registry:2</code> container over loopback — same operation, different implementations. This is an apples-to-apples comparison.</p>
+    <h2>End-to-end: justoci + publish vs oras</h2>
+    <p>oras combines build and push in one subprocess call. The equivalent Rust pipeline is <code>oci_build::build</code> + <code>oci_publish::publish</code>. Both produce the same result: artifact in a registry. The Rust timings are measured separately and summed.</p>
 
     <table>
-      <tr><th>Payload</th><th>publish (in-process)</th><th>oras (subprocess)</th><th>publish advantage</th></tr>
+      <tr><th>Payload</th><th>justoci + publish</th><th>oras (build+push)</th><th>advantage</th></tr>
+      <tr><td>4 KB</td><td><strong>53.5 ms</strong> (14.5 + 39.0)</td><td>181.9 ms</td><td>3.4×</td></tr>
+      <tr><td>1 MB</td><td><strong>51.1 ms</strong> (17.7 + 33.4)</td><td>168.0 ms</td><td>3.3×</td></tr>
+      <tr><td>16 MB</td><td><strong>106.3 ms</strong> (72.7 + 33.6)</td><td>233.8 ms</td><td>2.2×</td></tr>
+    </table>
+
+    <h3>Push-only (pre-built layout)</h3>
+    <p>If the OCI layout already exists on disk the build cost is not paid again. The relevant comparison is push only:</p>
+
+    <table>
+      <tr><th>Payload</th><th>publish (push only)</th><th>oras</th><th>advantage</th></tr>
       <tr><td>4 KB</td><td><strong>39.0 ms</strong></td><td>181.9 ms</td><td>4.7×</td></tr>
       <tr><td>1 MB</td><td><strong>33.4 ms</strong></td><td>168.0 ms</td><td>5.0×</td></tr>
       <tr><td>16 MB</td><td><strong>33.6 ms</strong> / 477 MiB/s</td><td>233.8 ms / 68.4 MiB/s</td><td>7.0×</td></tr>
     </table>
 
     <p>oras fixed cost is ~170 ms — Go subprocess spawn plus the first HTTP round-trip. publish eliminates subprocess spawn entirely; the ~34 ms floor is the loopback HTTP cost alone (HEAD per blob + manifest PUT). At 16 MB the advantage grows further because oras's subprocess I/O path bottlenecks before the loopback link saturates.</p>
-
-    <div class="callout">
-      <strong>Note on scope.</strong> The justoci bench (<code>oci_build::build</code>) measures the build step — writing an OCI layout to disk, no network. That is a different operation and not included in this comparison. A full pipeline pays both: ~15–73 ms to build + ~34–39 ms to push.
-    </div>
   </section>
 
   <section id="reproduce">
