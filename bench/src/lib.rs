@@ -46,6 +46,8 @@ fn build_runner(case: CaseConfig) -> Option<Box<dyn BuildRunner>> {
         "justoci" => Some(Box::new(justoci_runner::JustociRunner::new(case))),
         #[cfg(feature = "oras")]
         "oras" => Some(Box::new(oras_runner::OrasRunner::new(case))),
+        #[cfg(feature = "publish")]
+        "publish" => Some(Box::new(publish_runner::PublishRunner::new(case))),
         other => {
             eprintln!("bench: skipping '{other}' — feature not enabled");
             None
@@ -57,3 +59,5 @@ fn build_runner(case: CaseConfig) -> Option<Box<dyn BuildRunner>> {
 mod justoci_runner;
 #[cfg(feature = "oras")]
 mod oras_runner;
+#[cfg(feature = "publish")]
+mod publish_runner;

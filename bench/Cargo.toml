@@ -12,13 +12,15 @@ rust-version.workspace = true
 default  = ["justoci"]
 justoci  = ["dep:oci-build", "dep:spec", "dep:tempfile"]
 oras     = ["dep:tempfile"]
+publish  = ["dep:oci-build", "dep:oci-publish", "dep:spec", "dep:tempfile"]
 
 [dependencies]
-serde     = { version = "1", features = ["derive"] }
-toml      = "0.8"
-oci-build = { workspace = true, optional = true }
-spec      = { workspace = true, optional = true }
-tempfile  = { version = "3", optional = true }
+serde       = { version = "1", features = ["derive"] }
+toml        = "0.8"
+oci-build   = { workspace = true, optional = true }
+oci-publish = { workspace = true, optional = true }
+spec        = { workspace = true, optional = true }
+tempfile    = { version = "3", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

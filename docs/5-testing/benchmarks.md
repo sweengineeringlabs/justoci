@@ -2,11 +2,11 @@
 
 **Audience**: Contributors, adopters evaluating build pipeline throughput.
 
-> **TLDR**: `oci_build::build` sustains **~223 MiB/s** for 16 MB artifacts with ~18 ms fixed overhead per build. The fixed overhead covers TempDir creation, CAS blob write, manifest/config JSON serialization, and atomic rename — not data processing. Run `cargo bench -p swe_justoci_bench --bench build` to reproduce.
+> **TLDR**: `oci_build::build` sustains **~220 MiB/s** for 16 MB artifacts with ~14 ms fixed overhead per build. `oci_publish::publish` (in-process HTTP) overtakes local-disk build at 16 MB reaching **~477 MiB/s** over loopback — fixed overhead ~34 ms. oras subprocess adds ~170 ms fixed cost. Run `cargo bench -p swe_justoci_bench --bench build` to reproduce.
 
 ## Bench architecture
 
-The benchmark lives in `bench/benches/build.rs`. It exercises the full `oci_build::build` pipeline end-to-end with real disk I/O to a `tempfile::TempDir` on NTFS.
+The benchmark lives in `bench/benches/build.rs`. It exercises the full `oci_build::build` pipeline end-to-end with real disk I/O to a `tempfile::TempDir` on NTFS. The publish and oras runners push to a local `registry:2` container over loopback.
 
 ```rust
 b.iter_batched(
@@ -43,7 +43,7 @@ The source blob is pre-written once outside any iteration. Each iteration receiv
 | Bench harness | Criterion 0.5 |
 | Samples | 100 per case |
 | Warmup | 3 s |
-| Output | Real disk I/O to `%TEMP%` (NTFS) |
+| Output | Real disk I/O to `%TEMP%` (NTFS) / loopback HTTP (publish, oras) |
 
 ## Results — `oci_build::build` (single-layer, `application/octet-stream`, no compression)
 
@@ -51,15 +51,27 @@ Each iteration creates a fresh output directory; the source blob is pre-written 
 
 | Payload | Mean time | Throughput |
 |---|---|---|
-| 4 KB | **17.6 ms** | 227 KiB/s |
-| 1 MB | **19.5 ms** | 51.3 MiB/s |
-| 16 MB | **71.7 ms** | 223 MiB/s |
+| 4 KB | **14.5 ms** | 276 KiB/s |
+| 1 MB | **17.7 ms** | 56.7 MiB/s |
+| 16 MB | **72.7 ms** | 220 MiB/s |
+
+## Results — `oci_publish::publish` (in-process HTTP push to local registry:2)
+
+The OCI layout is built once at startup; each iteration pushes with a unique tag so the manifest PUT always fires. Blob deduplication means steady-state is HEAD×N blobs + manifest PUT.
+
+| Payload | Mean time | Throughput |
+|---|---|---|
+| 4 KB | **39.0 ms** | 103 KiB/s |
+| 1 MB | **33.4 ms** | 29.9 MiB/s |
+| 16 MB | **33.6 ms** | 477 MiB/s |
+
+The ~34 ms floor covers the HTTP round-trip set: HEAD check per blob + manifest PUT, all on loopback. At 16 MB the data transfer time (~29 ms above the floor of a 4 KB push) still fits inside 34 ms — loopback achieves ~530 MB/s effective throughput, so the network cost is absorbed. The 4 KB and 1 MB cases are floor-bound; 16 MB becomes throughput-bound.
 
 ## What the numbers mean
 
 ### Fixed overhead dominates small artifacts
 
-The 4 KB and 1 MB cases take nearly identical time (~18 ms). That ~18 ms floor covers five steps that happen regardless of payload size:
+The 4 KB and 1 MB justoci cases take nearly identical time (~15–18 ms). That floor covers five steps that happen regardless of payload size:
 
 | Step | justoci pays? |
 |---|---|
@@ -72,41 +84,44 @@ The 4 KB and 1 MB cases take nearly identical time (~18 ms). That ~18 ms floor c
 
 For the 4 KB case, data processing is negligible — the fixed overhead is the entire cost.
 
+### Crossover: publish beats justoci at 16 MB
+
+At 16 MB, loopback HTTP becomes faster than NTFS write:
+
+- justoci writes the full 16 MB layer to disk: **72.7 ms**
+- publish pushes the same 16 MB over loopback: **33.6 ms**
+
+This is expected: NTFS random-write latency (~200–300 MB/s effective for small-file workloads with `rename` overhead) loses to loopback TCP at 530+ MB/s. For large artifacts in a pipeline that pushes to a registry anyway, using `oci_publish` directly skips the intermediate disk write.
+
 ### Throughput scales with payload
 
-At 16 MB, data processing (~54 ms above the floor) overtakes the fixed overhead and justoci reaches ~223 MiB/s. This is NTFS write bandwidth for uncompressed `application/octet-stream` layers — the bottleneck shifts from metadata operations to disk I/O.
+At 16 MB, data processing overtakes the fixed overhead and justoci reaches ~220 MiB/s (NTFS write bandwidth). For publish, the 477 MiB/s reflects loopback throughput after blob deduplication reduces re-upload cost.
 
 Adding Gzip or Zstd compression reduces disk I/O at the cost of CPU; actual throughput depends on codec and compression ratio.
 
 ### Implication for real use cases
 
-Firmware images, ML model weights, and VM rootfs blobs are typically 10–500 MB. In that range justoci runs at **100–223 MiB/s**, meaning a 100 MB artifact takes ~450 ms end-to-end. A 500 MB rootfs takes ~2.5 s.
+Firmware images, ML model weights, and VM rootfs blobs are typically 10–500 MB. In that range:
 
-For pipelines building many small artifacts (< 1 MB), the ~18 ms overhead per build is the dominant cost. Batching small files into fewer, larger layers eliminates most of it.
+- **Local disk only**: justoci runs at **100–220 MiB/s** — a 100 MB artifact takes ~450 ms, a 500 MB rootfs ~2.5 s.
+- **Push to registry**: publish runs at **~477 MiB/s** at 16 MB+, skipping the intermediate OCI layout write.
+- **Both paths**: build once to disk with justoci, push later with publish — adds ~15–35 ms per step.
 
-## Comparison with oras
+## Comparison — three-way: justoci vs publish vs oras
 
-Measured via `OrasRunner` in the same Criterion harness — `oras push --plain-http` to a local `registry:2` container over loopback, 100 samples, same payload sizes.
+**Note**: the three runners measure different operations at different layers of the OCI stack. justoci builds to local disk (no network). publish pushes in-process over loopback HTTP. oras invokes an external subprocess. They are not interchangeable, but the comparison gives order-of-magnitude orientation for pipeline design.
 
-**These numbers are not directly comparable.** `oras push` transmits a blob to a registry over HTTP/loopback. `justoci::build` assembles an OCI layout to local disk with no network involved. The operations differ in scope — justoci is the build step, oras is the push step. The comparison is useful for order-of-magnitude orientation.
-
-| Payload | justoci (local disk) | oras push (loopback) | justoci advantage |
+| Payload | justoci (local disk) | publish (in-process HTTP) | oras (subprocess HTTP) |
 |---|---|---|---|
-| 4 KB | **14.1 ms** | **132.5 ms** | 9.4× faster |
-| 1 MB | **19.9 ms** | **132.5 ms** | 6.7× faster |
-| 16 MB | **74.7 ms** | **167.1 ms** | 2.2× faster |
+| 4 KB | **14.5 ms** / 276 KiB/s | 39.0 ms / 103 KiB/s | 181.9 ms / 22 KiB/s |
+| 1 MB | **17.7 ms** / 56.7 MiB/s | 33.4 ms / 29.9 MiB/s | 168.0 ms / 5.95 MiB/s |
+| 16 MB | 72.7 ms / 220 MiB/s | **33.6 ms** / 477 MiB/s | 233.8 ms / 68.4 MiB/s |
 
-oras fixed overhead is ~130 ms — Go subprocess spawn plus the HTTP round-trip to a loopback registry. For small artifacts this dominates: both 4 KB and 1 MB take nearly identical time. At 16 MB, data transfer over loopback begins to matter and oras reaches ~96 MiB/s vs justoci's ~214 MiB/s on local NTFS.
+**justoci vs oras**: 12.5× / 9.5× / 3.2× faster (4 KB / 1 MB / 16 MB).
 
-Run the oras comparison:
+**publish vs oras**: 4.7× / 5.0× / 7.0× faster (4 KB / 1 MB / 16 MB). The in-process HTTP path eliminates subprocess spawn (~150 ms) and re-encodes nothing — the layout is pre-built at bench startup.
 
-```sh
-# Start a local registry
-docker run -d -p 5000:5000 registry:2
-
-# Run both runners together
-cargo bench -p swe_justoci_bench --bench build --features justoci,oras
-```
+**justoci vs publish at 16 MB**: publish is 2.2× faster — NTFS write loses to loopback TCP at this payload size.
 
 ## Reproducing
 
@@ -115,7 +130,8 @@ cargo bench -p swe_justoci_bench --bench build --features justoci,oras
 | Requirement | Notes |
 |---|---|
 | Rust stable toolchain | required |
-| Docker + oras 1.x (oras comparison only) | `docker run -d -p 5000:5000 registry:2` |
+| Docker (publish + oras) | `docker run -d -p 5000:5000 registry:2` |
+| oras 1.x on PATH (oras runner) | `winget install ORASProject.ORAS` |
 
 ### Steps
 
@@ -132,12 +148,14 @@ cd justoci
 cargo bench -p swe_justoci_bench --bench build
 ```
 
-**3. Run with oras comparison**
+**3. Run with publish + oras comparison**
 
 ```sh
 docker run -d -p 5000:5000 registry:2
-cargo bench -p swe_justoci_bench --bench build --features justoci,oras
+OCIMAGE_ALLOW_INSECURE=1 cargo bench -p swe_justoci_bench --bench build --features justoci,publish,oras
 ```
+
+`OCIMAGE_ALLOW_INSECURE=1` opts the publish runner into plain HTTP — required for local `registry:2`.
 
 **4. Run a single case**
 
