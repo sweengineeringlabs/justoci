@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use criterion::{BatchSize, BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use tempfile::TempDir;
 
@@ -19,5 +21,10 @@ fn bench_push(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_push);
+criterion_group! {
+    name    = benches;
+    config  = Criterion::default()
+        .output_directory(Path::new("../docs/5-testing/bench_results"));
+    targets = bench_push
+}
 criterion_main!(benches);
