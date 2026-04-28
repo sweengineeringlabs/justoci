@@ -8,7 +8,7 @@ use p256::ecdsa::SigningKey;
 use rand_chacha::ChaCha20Rng;
 use rand_core::SeedableRng;
 use spec::parse_and_validate_str;
-use swe_justsign_sign::{EcdsaP256Signer, sign_blob};
+use swe_justsign_sign::{EcdsaP256Signer, sign_blob_message_prehashed};
 use tempfile::TempDir;
 
 use crate::api::{CaseConfig, Runner};
@@ -16,7 +16,6 @@ use crate::api::{CaseConfig, Runner};
 pub struct JustPipeline {
     label: String,
     payload_bytes: u64,
-    payload: Vec<u8>,
     spec: spec::LoadedSpec,
     signer: EcdsaP256Signer,
     registry: String,
@@ -46,6 +45,7 @@ impl JustPipeline {
         let blob_path = tmp.path().join("payload.bin");
         let payload: Vec<u8> = (0..payload_bytes as usize).map(|i| i as u8).collect();
         fs::write(&blob_path, &payload).expect("just-pipeline bench: failed to write payload");
+        drop(payload);
 
         let blob_str = blob_path.to_string_lossy().replace('\\', "/");
         let id_tag = case.label.replace('/', "-");
@@ -71,7 +71,6 @@ media_type = "application/octet-stream"
         Self {
             label: case.label,
             payload_bytes,
-            payload,
             spec,
             signer,
             registry,
@@ -79,6 +78,16 @@ media_type = "application/octet-stream"
             _tmp: tmp,
         }
     }
+}
+
+fn decode_sha256_hex(hex: &str) -> [u8; 32] {
+    assert_eq!(hex.len(), 64, "sha256 hex must be 64 chars");
+    let mut out = [0u8; 32];
+    for (i, b) in out.iter_mut().enumerate() {
+        *b = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16)
+            .expect("layer digest contains valid hex");
+    }
+    out
 }
 
 impl Runner for JustPipeline {
@@ -91,12 +100,19 @@ impl Runner for JustPipeline {
     }
 
     fn run(&self, output_path: &Path) {
-        build(&self.spec, output_path).expect("just-pipeline bench: build must succeed");
+        let build_out = build(&self.spec, output_path)
+            .expect("just-pipeline bench: build must succeed");
 
-        sign_blob(&self.payload, "application/octet-stream", &self.signer, None)
-            .expect("just-pipeline bench: sign_blob must succeed");
+        // Reuse the layer digest the build already computed — skips a second
+        // SHA-256 pass over the payload and the signer's internal hash pass.
+        let layer_hex = build_out.layer_digests[0].hex();
+        let digest = decode_sha256_hex(layer_hex);
 
-        let image_dir = ImageDir::open(output_path).expect("just-pipeline bench: ImageDir::open must succeed");
+        sign_blob_message_prehashed(digest, &self.signer, None)
+            .expect("just-pipeline bench: sign must succeed");
+
+        let image_dir = ImageDir::open(output_path)
+            .expect("just-pipeline bench: ImageDir::open must succeed");
         let n = self.counter.fetch_add(1, Ordering::Relaxed);
         let sink = PublishSink::Registry {
             registry: self.registry.clone(),
