@@ -44,6 +44,8 @@ fn build_runner(case: CaseConfig) -> Option<Box<dyn BuildRunner>> {
     match case.runner.as_str() {
         #[cfg(feature = "justoci")]
         "justoci" => Some(Box::new(justoci_runner::JustociRunner::new(case))),
+        #[cfg(feature = "oras")]
+        "oras" => Some(Box::new(oras_runner::OrasRunner::new(case))),
         other => {
             eprintln!("bench: skipping '{other}' — feature not enabled");
             None
@@ -53,3 +55,5 @@ fn build_runner(case: CaseConfig) -> Option<Box<dyn BuildRunner>> {
 
 #[cfg(feature = "justoci")]
 mod justoci_runner;
+#[cfg(feature = "oras")]
+mod oras_runner;

@@ -21,3 +21,26 @@ payload_bytes = 1048576
 runner        = "justoci"
 label         = "justoci/16mb"
 payload_bytes = 16777216
+
+# ── oras (subprocess, HTTP push to local registry) ───────────────────────────
+# Requires: oras 1.x on PATH + a local registry:
+#   docker run -d -p 5000:5000 registry:2
+# Run: cargo bench -p swe_justoci_bench --bench build --features oras
+
+[[case]]
+runner        = "oras"
+label         = "oras/4kb"
+payload_bytes = 4096
+registry      = "localhost:5000"
+
+[[case]]
+runner        = "oras"
+label         = "oras/1mb"
+payload_bytes = 1048576
+registry      = "localhost:5000"
+
+[[case]]
+runner        = "oras"
+label         = "oras/16mb"
+payload_bytes = 16777216
+registry      = "localhost:5000"

@@ -11,6 +11,7 @@ rust-version.workspace = true
 [features]
 default  = ["justoci"]
 justoci  = ["dep:oci-build", "dep:spec", "dep:tempfile"]
+oras     = ["dep:tempfile"]
 
 [dependencies]
 serde     = { version = "1", features = ["derive"] }
