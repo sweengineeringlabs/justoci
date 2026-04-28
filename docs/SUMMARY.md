@@ -38,6 +38,7 @@
 
 - [Testing strategy](./5-testing/testing_strategy.md)
 - [Benchmarks](./5-testing/benchmarks.md)
+- [Benchmark blog post](./5-testing/bench_blog.html)
 
 # Deployment
 
