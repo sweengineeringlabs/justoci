@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use tempfile::TempDir;
@@ -9,9 +9,11 @@ use crate::{BuildRunner, CaseConfig};
 pub struct OrasRunner {
     label: String,
     payload_bytes: u64,
-    /// Pre-built `path:media-type` argument for `oras push`.
-    file_arg: String,
     registry_ref: String,
+    /// Working directory passed to oras so we can use a bare filename instead
+    /// of an absolute path. oras 1.x on Windows rejects absolute paths in the
+    /// `file:media-type` argument; using a relative name avoids the issue.
+    work_dir: PathBuf,
     _tmp: TempDir,
 }
 
@@ -36,20 +38,15 @@ impl OrasRunner {
         let tmp = TempDir::new().expect("oras bench: failed to create work dir");
 
         let payload: Vec<u8> = (0..payload_bytes as usize).map(|i| i as u8).collect();
-        let payload_path = tmp.path().join("payload.bin");
-        fs::write(&payload_path, &payload).expect("oras bench: failed to write payload");
+        fs::write(tmp.path().join("payload.bin"), &payload)
+            .expect("oras bench: failed to write payload");
 
         // OCI tags must not contain '/'; derive a stable tag from the label.
         let tag = case.label.replace('/', "-");
         let registry_ref = format!("{registry}/bench-artifact:{tag}");
+        let work_dir = tmp.path().to_path_buf();
 
-        // oras 1.x file:type syntax: `<path>:<media-type>`.
-        let file_arg = format!(
-            "{}:application/octet-stream",
-            payload_path.to_str().expect("payload path is valid utf-8"),
-        );
-
-        Self { label: case.label, payload_bytes, file_arg, registry_ref, _tmp: tmp }
+        Self { label: case.label, payload_bytes, registry_ref, work_dir, _tmp: tmp }
     }
 }
 
@@ -65,11 +62,12 @@ impl BuildRunner for OrasRunner {
     // `output_path` is unused — oras pushes to the registry, not to local disk.
     fn run(&self, _output_path: &Path) {
         let status = Command::new("oras")
+            .current_dir(&self.work_dir)
             .args([
                 "push",
                 "--plain-http",
                 &self.registry_ref,
-                &self.file_arg,
+                "payload.bin:application/octet-stream",
             ])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -86,7 +84,7 @@ fn which_oras() {
         .stderr(Stdio::null())
         .status()
         .unwrap_or_else(|_| panic!(
-            "oras not found on PATH — the oras bench requires Linux or WSL2 with oras 1.x \
-             installed and a local registry running (e.g. docker run -d -p 5000:5000 registry:2)"
+            "oras not found on PATH — the oras bench requires oras 1.x \
+             and a local registry running (e.g. docker run -d -p 5000:5000 registry:2)"
         ));
 }

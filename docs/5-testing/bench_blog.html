@@ -264,13 +264,22 @@ tr:nth-child(even) td{background:var(--surface)}
 
   <section id="comparison">
     <h2>vs oras</h2>
-    <p>Run <code>scripts/bench/compare_oras.sh</code> on Linux with Docker to time <code>oras push</code> for the same payload sizes.</p>
+    <p>Measured via <code>OrasRunner</code> in the same Criterion harness — <code>oras push --plain-http</code> to a local <code>registry:2</code> container over loopback, 100 samples, 3 s warmup, same payload sizes.</p>
 
     <div class="callout amber">
-      <strong>These numbers are not directly comparable.</strong> <code>oras push</code> transmits a pre-built blob to a registry over HTTP/loopback. <code>justoci::build</code> assembles an OCI layout locally with no network involved. The operations differ in scope — the comparison script notes this explicitly.
+      <strong>These numbers are not directly comparable.</strong> <code>oras push</code> transmits a blob to a registry over HTTP/loopback. <code>justoci::build</code> assembles an OCI layout to local disk with no network involved. justoci is the build step; oras is the push step. The comparison is order-of-magnitude orientation, not apples-to-apples.
     </div>
 
-    <p>The relevant distinction: justoci writes to local disk (or an in-process buffer). A push to a remote registry always adds the network round-trip on top, regardless of which tool built the layout. The two operations are complementary, not competing.</p>
+    <table>
+      <tr><th>Payload</th><th>justoci (local disk)</th><th>oras push (loopback)</th><th>justoci advantage</th></tr>
+      <tr><td>4 KB</td><td><strong>14.1 ms</strong></td><td><strong>132.5 ms</strong></td><td>9.4×</td></tr>
+      <tr><td>1 MB</td><td><strong>19.9 ms</strong></td><td><strong>132.5 ms</strong></td><td>6.7×</td></tr>
+      <tr><td>16 MB</td><td><strong>74.7 ms</strong></td><td><strong>167.1 ms</strong></td><td>2.2×</td></tr>
+    </table>
+
+    <p>oras fixed overhead is ~130 ms — Go subprocess spawn plus an HTTP round-trip to a loopback registry. Both 4 KB and 1 MB take nearly identical time; only at 16 MB does data transfer start to matter. At 16 MB oras reaches ~96 MiB/s vs justoci's ~214 MiB/s on local NTFS.</p>
+
+    <p>The relevant distinction: justoci writes to local disk. A push to a remote registry always adds the network round-trip on top, regardless of which tool built the layout. The two operations are complementary, not competing — justoci builds, oras (or any push tool) ships.</p>
   </section>
 
   <section id="reproduce">
@@ -280,6 +289,7 @@ tr:nth-child(even) td{background:var(--surface)}
     <table>
       <tr><th>Requirement</th><th>Notes</th></tr>
       <tr><td>Rust stable toolchain</td><td>required</td></tr>
+      <tr><td>Docker + oras 1.x (oras comparison only)</td><td><code>docker run -d -p 5000:5000 registry:2</code></td></tr>
     </table>
 
     <h3>Steps</h3>
@@ -288,14 +298,15 @@ tr:nth-child(even) td{background:var(--surface)}
     <pre><code>git clone git@github.com:sweengineeringlabs/justoci.git
 cd justoci</code></pre>
 
-    <p><strong>2. Run all cases</strong></p>
+    <p><strong>2. Run all cases (justoci only)</strong></p>
     <pre><code>cargo bench -p swe_justoci_bench --bench build</code></pre>
 
-    <p><strong>3. Run a single case</strong></p>
-    <pre><code>cargo bench -p swe_justoci_bench --bench build -- "build_oci_artifact/16mb"</code></pre>
+    <p><strong>3. Run with oras comparison</strong></p>
+    <pre><code>docker run -d -p 5000:5000 registry:2
+cargo bench -p swe_justoci_bench --bench build --features justoci,oras</code></pre>
 
-    <p><strong>4. Compare against oras (Linux with Docker)</strong></p>
-    <pre><code>bash scripts/bench/compare_oras.sh</code></pre>
+    <p><strong>4. Run a single case</strong></p>
+    <pre><code>cargo bench -p swe_justoci_bench --bench build -- "build_oci_artifact/16mb"</code></pre>
 
     <h3>Output</h3>
     <p>Criterion prints to stdout. An HTML report with plots is written to <code>target/criterion/build_oci_artifact/report/index.html</code>. This file is ephemeral — <code>cargo clean</code> removes it.</p>

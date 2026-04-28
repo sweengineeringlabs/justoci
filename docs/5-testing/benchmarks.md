@@ -86,9 +86,27 @@ For pipelines building many small artifacts (< 1 MB), the ~18 ms overhead per bu
 
 ## Comparison with oras
 
-Run `scripts/bench/compare_oras.sh` on Linux with Docker available. The script times `oras push` to a local Docker registry for the same payload sizes.
+Measured via `OrasRunner` in the same Criterion harness — `oras push --plain-http` to a local `registry:2` container over loopback, 100 samples, same payload sizes.
 
-**These numbers are not directly comparable.** `oras push` transmits a pre-built blob to a registry over HTTP/loopback. `justoci::build` assembles an OCI layout locally with no network involved. The operations differ in scope — the script notes this explicitly. The comparison is useful for order-of-magnitude orientation, not apples-to-apples benchmarking.
+**These numbers are not directly comparable.** `oras push` transmits a blob to a registry over HTTP/loopback. `justoci::build` assembles an OCI layout to local disk with no network involved. The operations differ in scope — justoci is the build step, oras is the push step. The comparison is useful for order-of-magnitude orientation.
+
+| Payload | justoci (local disk) | oras push (loopback) | justoci advantage |
+|---|---|---|---|
+| 4 KB | **14.1 ms** | **132.5 ms** | 9.4× faster |
+| 1 MB | **19.9 ms** | **132.5 ms** | 6.7× faster |
+| 16 MB | **74.7 ms** | **167.1 ms** | 2.2× faster |
+
+oras fixed overhead is ~130 ms — Go subprocess spawn plus the HTTP round-trip to a loopback registry. For small artifacts this dominates: both 4 KB and 1 MB take nearly identical time. At 16 MB, data transfer over loopback begins to matter and oras reaches ~96 MiB/s vs justoci's ~214 MiB/s on local NTFS.
+
+Run the oras comparison:
+
+```sh
+# Start a local registry
+docker run -d -p 5000:5000 registry:2
+
+# Run both runners together
+cargo bench -p swe_justoci_bench --bench build --features justoci,oras
+```
 
 ## Reproducing
 
@@ -97,6 +115,7 @@ Run `scripts/bench/compare_oras.sh` on Linux with Docker available. The script t
 | Requirement | Notes |
 |---|---|
 | Rust stable toolchain | required |
+| Docker + oras 1.x (oras comparison only) | `docker run -d -p 5000:5000 registry:2` |
 
 ### Steps
 
@@ -107,13 +126,20 @@ git clone git@github.com:sweengineeringlabs/justoci.git
 cd justoci
 ```
 
-**2. Run the benchmark**
+**2. Run the benchmark (justoci only)**
 
 ```sh
 cargo bench -p swe_justoci_bench --bench build
 ```
 
-**3. Run a single case**
+**3. Run with oras comparison**
+
+```sh
+docker run -d -p 5000:5000 registry:2
+cargo bench -p swe_justoci_bench --bench build --features justoci,oras
+```
+
+**4. Run a single case**
 
 ```sh
 cargo bench -p swe_justoci_bench --bench build -- "build_oci_artifact/16mb"
