@@ -52,6 +52,12 @@ toml               = { workspace = true }
 # Tempdir-backed integration tests stage source files alongside specs.
 tempfile           = "3"
 
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name    = "build_layout"
+harness = false
+
 # Integration test surface. `vm_image_build_test` covers a 3-layer
 # vm_image end-to-end; `reproducibility_test` is the
 # Production-Guarantees-§2 gate; `oci_artifact_build_test` exercises
