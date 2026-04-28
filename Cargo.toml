@@ -1,11 +1,11 @@
 [workspace]
 resolver = "2"
 members = [
-    "spec",
-    "attest",
-    "build",
-    "publish",
-    "cli",
+    "main/features/spec",
+    "main/features/attest",
+    "main/features/build",
+    "main/features/publish",
+    "main/features/cli",
     "bench",
     "e2e",
 ]
@@ -24,10 +24,10 @@ rust-version = "1.86"
 
 [workspace.dependencies]
 # ── Internal sibling crates ────────────────────────────────────────────────
-spec        = { path = "spec",    package = "swe_justoci_spec" }
-attest      = { path = "attest",  package = "swe_justoci_attest" }
-oci-build   = { path = "build",   package = "swe_justoci_oci_build" }
-oci-publish = { path = "publish", package = "swe_justoci_oci_publish" }
+spec        = { path = "main/features/spec",    package = "swe_justoci_spec" }
+attest      = { path = "main/features/attest",  package = "swe_justoci_attest" }
+oci-build   = { path = "main/features/build",   package = "swe_justoci_oci_build" }
+oci-publish = { path = "main/features/publish", package = "swe_justoci_oci_publish" }
 
 # ── Cross-repo sibling — swelabs/virtualization/justcas ──────────────────
 # Content-addressed storage primitive. Used by `spec` for the canonical
