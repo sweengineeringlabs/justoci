@@ -29,3 +29,4 @@ pub use api::error::PublishError;
 pub use api::image_dir::{ImageDescriptor, ImageDir, ImageDirError};
 pub use api::sink::{PublishOutcome, PublishSink, RegistryAuth};
 pub use saf::publish::publish;
+pub use core::streaming_sink::push_artifact_streaming;

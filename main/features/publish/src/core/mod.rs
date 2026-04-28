@@ -7,3 +7,4 @@
 
 pub mod http_sink;
 pub mod registry_sink;
+pub mod streaming_sink;

@@ -1,13 +1,14 @@
+use std::fmt::Write as _;
 use std::fs;
-use std::path::Path;
+use std::io::Read as _;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use oci_build::build;
-use oci_publish::{ImageDir, PublishSink, publish};
+use oci_publish::push_artifact_streaming;
 use p256::ecdsa::SigningKey;
 use rand_chacha::ChaCha20Rng;
 use rand_core::SeedableRng;
-use spec::parse_and_validate_str;
+use sha2::{Digest as _, Sha256};
 use swe_justsign_sign::{EcdsaP256Signer, sign_blob_message_prehashed};
 use tempfile::TempDir;
 
@@ -16,7 +17,7 @@ use crate::api::{CaseConfig, Runner};
 pub struct JustPipeline {
     label: String,
     payload_bytes: u64,
-    spec: spec::LoadedSpec,
+    blob_path: PathBuf,
     signer: EcdsaP256Signer,
     registry: String,
     counter: AtomicU64,
@@ -29,8 +30,9 @@ impl JustPipeline {
             .params
             .get("payload_bytes")
             .and_then(|v| v.as_integer())
-            .unwrap_or_else(|| panic!("just-pipeline case '{}': missing param 'payload_bytes'", case.label))
-            as u64;
+            .unwrap_or_else(|| {
+                panic!("just-pipeline case '{}': missing param 'payload_bytes'", case.label)
+            }) as u64;
 
         let registry = crate::api::resolve_registry(&case);
 
@@ -47,47 +49,19 @@ impl JustPipeline {
         fs::write(&blob_path, &payload).expect("just-pipeline bench: failed to write payload");
         drop(payload);
 
-        let blob_str = blob_path.to_string_lossy().replace('\\', "/");
-        let id_tag = case.label.replace('/', "-");
-        let toml = format!(
-            r#"
-spec_version = "0"
-id           = "e2e-artifact:{id_tag}"
-kind         = "oci_artifact"
-description  = "pipeline bench"
-
-[[layers]]
-source     = "{blob_str}"
-media_type = "application/octet-stream"
-"#,
-        );
-
-        let spec = parse_and_validate_str(&toml, tmp.path().to_path_buf())
-            .expect("just-pipeline bench: spec must parse");
-
         let sk = SigningKey::random(&mut ChaCha20Rng::from_seed([0x45u8; 32]));
         let signer = EcdsaP256Signer::new(sk, None);
 
         Self {
             label: case.label,
             payload_bytes,
-            spec,
+            blob_path,
             signer,
             registry,
             counter: AtomicU64::new(0),
             _tmp: tmp,
         }
     }
-}
-
-fn decode_sha256_hex(hex: &str) -> [u8; 32] {
-    assert_eq!(hex.len(), 64, "sha256 hex must be 64 chars");
-    let mut out = [0u8; 32];
-    for (i, b) in out.iter_mut().enumerate() {
-        *b = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16)
-            .expect("layer digest contains valid hex");
-    }
-    out
 }
 
 impl Runner for JustPipeline {
@@ -99,27 +73,49 @@ impl Runner for JustPipeline {
         self.payload_bytes
     }
 
-    fn run(&self, output_path: &Path) {
-        let build_out = build(&self.spec, output_path)
-            .expect("just-pipeline bench: build must succeed");
+    fn run(&self, _output_path: &Path) {
+        // Single hash pass — the same digest drives both the signer and the
+        // registry PUT URL, avoiding the double-SHA-256 from the old
+        // build() + publish() path.
+        let digest_bytes = hash_file(&self.blob_path);
 
-        // Reuse the layer digest the build already computed — skips a second
-        // SHA-256 pass over the payload and the signer's internal hash pass.
-        let layer_hex = build_out.layer_digests[0].hex();
-        let digest = decode_sha256_hex(layer_hex);
-
-        sign_blob_message_prehashed(digest, &self.signer, None)
+        sign_blob_message_prehashed(digest_bytes, &self.signer, None)
             .expect("just-pipeline bench: sign must succeed");
 
-        let image_dir = ImageDir::open(output_path)
-            .expect("just-pipeline bench: ImageDir::open must succeed");
+        let layer_hex = bytes_to_hex(&digest_bytes);
         let n = self.counter.fetch_add(1, Ordering::Relaxed);
-        let sink = PublishSink::Registry {
-            registry: self.registry.clone(),
-            repository: "pipeline-bench".to_owned(),
-            tag: format!("bench-{n}"),
-            auth: None,
-        };
-        publish(&image_dir, &sink).expect("just-pipeline bench: publish must succeed");
+        push_artifact_streaming(
+            &self.blob_path,
+            &layer_hex,
+            self.payload_bytes,
+            "application/octet-stream",
+            &self.registry,
+            "pipeline-bench",
+            &format!("bench-{n}"),
+            None,
+        )
+        .expect("just-pipeline bench: push must succeed");
     }
+}
+
+fn hash_file(path: &Path) -> [u8; 32] {
+    let mut f = fs::File::open(path).expect("just-pipeline: source file must be readable");
+    let mut hasher = Sha256::new();
+    let mut buf = [0u8; 65536];
+    loop {
+        let n = f.read(&mut buf).expect("just-pipeline: source file read error");
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    hasher.finalize().into()
+}
+
+fn bytes_to_hex(bytes: &[u8; 32]) -> String {
+    let mut s = String::with_capacity(64);
+    for b in bytes {
+        write!(s, "{b:02x}").unwrap();
+    }
+    s
 }

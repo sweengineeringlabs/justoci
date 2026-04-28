@@ -26,6 +26,7 @@ serde_json       = { workspace = true }
 # tests. `reqwest` is already in the dep tree transitively via
 # `oci-distribution` so this is not a new build-graph cost.
 reqwest          = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "blocking"] }
+sha2             = { workspace = true }
 # Spec is the source of truth for what an OCI image dir looks like —
 # media type grammar, kind-specific layer rules, validation contract
 # every other crate inherits. Declared per Phase 1 Worker C contract;
