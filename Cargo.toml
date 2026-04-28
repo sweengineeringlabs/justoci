@@ -35,15 +35,6 @@ oci-publish = { path = "main/features/publish", package = "swe_justoci_oci_publi
 # blobs, manifest digests, attestation referrers.
 cas = { path = "../justcas/cas", package = "swe_justcas_cas" }
 
-# ── Cross-workspace path-deps — vmisolate-side crates justoci consumes ────
-# `oci-build` reads/writes ImageSpec + ConfigManifest shapes; its file
-# overlay path uses `userspace` for rootfs assembly and `chroot` for the
-# WSL/musl rootfs build, and `vmm-api` for the boot-config schema.
-# Paths walk one level up out of justoci/ into the vmisolate workspace.
-userspace = { path = "../vmisolate/main/features/userspace", package = "swe_vmisolate_userspace" }
-vmm-api   = { path = "../vmisolate/main/features/vmm-api",   package = "swe_vmisolate_vmm_api" }
-chroot    = { path = "../vmisolate/main/features/chroot",    package = "swe_vmisolate_chroot" }
-
 # ── Cross-repo sibling — swelabs/virtualization/justsign ──────────────────
 # Used ONLY when `attest` is built with `--features justsign` (the
 # third `CosignInvoker` impl alongside `sigstore-rs` and
