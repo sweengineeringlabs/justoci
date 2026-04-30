@@ -24,7 +24,7 @@ use swe_justoci_oci_cli::verify_engine::{
 fn build_attested_image_dir(tmp: &TempDir) -> std::path::PathBuf {
     let spec = common::stage_firmware_fixture_attested_no_sign(tmp.path());
     let image_dir = tmp.path().join("oci-out");
-    let assert = common::ocimage_bin()
+    let assert = common::oci_bin()
         .arg("build")
         .arg(&spec)
         .arg("-o")

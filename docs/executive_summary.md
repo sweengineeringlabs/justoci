@@ -103,7 +103,7 @@ Full list at [`3-design/spec_v0.md`](./3-design/spec_v0.md)
 - `build` — `Spec` → OCI Image Layout v1.1.
 - `attest` — SLSA + SBOM + cosign+Rekor.
 - `publish` — HTTP + OCI Distribution sinks.
-- `cli` — `ocimage` operator CLI (5 subcommands).
+- `cli` — `justoci` operator CLI (5 subcommands).
 
 External: [`justcas`](https://github.com/sweengineeringlabs/justcas)
 sibling repo, content-addressed-storage primitive.

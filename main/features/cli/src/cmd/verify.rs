@@ -1,4 +1,4 @@
-//! `ocimage verify <ref> [--policy <policy.toml>] [--auth ...]`.
+//! `justoci verify <ref> [--policy <policy.toml>] [--auth ...]`.
 //!
 //! ## Reference detection
 //!
@@ -20,7 +20,7 @@
 //! ## Auth (registry-ref branch only)
 //!
 //! Re-uses [`oci_publish::RegistryAuth`] so an operator who
-//! configured `ocimage publish` doesn't have to learn a second
+//! configured `justoci publish` doesn't have to learn a second
 //! model. The CLI surface is identical to publish's:
 //!
 //! - `--auth env` (default) — `REGISTRY_TOKEN`, then
@@ -49,7 +49,7 @@ use crate::registry::{
 };
 use crate::verify_engine::{verify, RealCosignVerifyInvoker, VerifyReport};
 
-/// Auth selector for `ocimage verify <registry-ref>`. Mirrors
+/// Auth selector for `justoci verify <registry-ref>`. Mirrors
 /// publish's [`AuthMode`] plus an explicit anonymous variant; we
 /// don't reuse publish's enum directly because verify supports
 /// `--no-auth` (skip env entirely) which publish doesn't expose.

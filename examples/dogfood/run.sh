@@ -3,11 +3,11 @@
 # Dogfood end-to-end smoke test (justoci issue #6, no-attest path).
 #
 # Spins up a local `registry:2` Docker container on a free port, then
-# drives the full ocimage pipeline against it:
+# drives the full justoci pipeline against it:
 #
-#   1. ocimage build firmware.spec.toml -o dist/ --no-attest
-#   2. ocimage publish dist/ --to "registry:localhost:$PORT/dogfood/firmware:v1" --no-auth
-#   3. ocimage verify "localhost:$PORT/dogfood/firmware:v1" --no-auth
+#   1. justoci build firmware.spec.toml -o dist/ --no-attest
+#   2. justoci publish dist/ --to "registry:localhost:$PORT/dogfood/firmware:v1" --no-auth
+#   3. justoci verify "localhost:$PORT/dogfood/firmware:v1" --no-auth
 #
 # The container is torn down on EXIT (success OR failure) via a trap so
 # a crashed run doesn't leave a registry+port lingering.
@@ -99,9 +99,9 @@ done
 rm -rf dist dist.partial
 
 # ─── Build / publish / verify ───────────────────────────────────────
-# Plain HTTP for localhost requires the OCIMAGE_ALLOW_INSECURE=1
+# Plain HTTP for localhost requires the JUSTOCI_ALLOW_INSECURE=1
 # opt-in. The publish + verify wires both honour it.
-export OCIMAGE_ALLOW_INSECURE=1
+export JUSTOCI_ALLOW_INSECURE=1
 
 # Workspace root is two levels up. Cargo invocations honour
 # `--manifest-path` so the script is callable from anywhere.

@@ -1,4 +1,4 @@
-//! `ocimage build <spec.toml> [-o <dir>] [--no-attest]`.
+//! `justoci build <spec.toml> [-o <dir>] [--no-attest]`.
 //!
 //! Pipeline:
 //!
@@ -59,7 +59,7 @@ pub fn run(spec_path: &Path, output_dir: &Path, no_attest: bool) -> Result<Build
         spec = %spec_path.display(),
         output = %output_dir.display(),
         no_attest,
-        "ocimage build start"
+        "justoci build start"
     );
 
     let loaded = parse_and_validate(spec_path)?;

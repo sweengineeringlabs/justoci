@@ -91,8 +91,8 @@ opt-in via Cargo features so the default binary stays lean.
 - **Tempdir per test.** No shared global state across tests;
   each test creates its own `tempfile::TempDir` and tears down
   on drop.
-- **`OCIMAGE_*` env tests serialised.** Tests that mutate
-  process-wide env (`OCIMAGE_COSIGN_BIN`, `REGISTRY_TOKEN`) use
+- **`JUSTOCI_*` env tests serialised.** Tests that mutate
+  process-wide env (`JUSTOCI_COSIGN_BIN`, `REGISTRY_TOKEN`) use
   a `Mutex` to serialise. CI runs them with `--test-threads=1`
   in the dedicated `--ignored` pass.
 

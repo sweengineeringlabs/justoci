@@ -108,11 +108,11 @@ diagnosis.
 
 ```
 Error: cosign was not found on PATH; install via
-       sigstore/cosign-installer or set OCIMAGE_COSIGN_BIN
+       sigstore/cosign-installer or set JUSTOCI_COSIGN_BIN
 ```
 
 cosign must be on PATH for signing. Install via your platform's
-package manager, or set `OCIMAGE_COSIGN_BIN=/path/to/cosign`.
+package manager, or set `JUSTOCI_COSIGN_BIN=/path/to/cosign`.
 
 CI workflows use:
 ```yaml
@@ -134,8 +134,8 @@ but Rekor write failed. Two recoveries:
 
 1. **Re-run** when Rekor is back. The build output dir survives
    (build atomicity), so you don't have to rebuild — re-run
-   `ocimage build` to retry attest only? Not in v0; today
-   `ocimage build` runs build+attest as one. Re-run the whole
+   `justoci build` to retry attest only? Not in v0; today
+   `justoci build` runs build+attest as one. Re-run the whole
    command.
 2. **Build with `--no-attest`** if you must ship now and
    re-attest later.
@@ -266,7 +266,7 @@ Error: registry ghcr.io does not implement the OCI 1.1 referrers
 ```
 
 Surfaced ONLY when the operator passed `--require-referrers` to
-`ocimage verify`. The flag escalates a 404 on the OCI 1.1
+`justoci verify`. The flag escalates a 404 on the OCI 1.1
 referrers endpoint from a soft "no referrers found" to a hard
 exit-5 failure.
 
@@ -295,4 +295,4 @@ behaviour, file at
 2. The exit code.
 3. Stderr from the run.
 4. Spec file (redacted) if reproducible.
-5. `ocimage --version`.
+5. `justoci --version`.

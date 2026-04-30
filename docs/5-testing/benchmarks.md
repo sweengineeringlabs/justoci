@@ -131,10 +131,10 @@ cargo bench -p swe_justoci_bench --bench build
 
 ```sh
 docker run -d -p 5000:5000 registry:2
-OCIMAGE_ALLOW_INSECURE=1 cargo bench -p swe_justoci_bench --bench build --features justoci,publish,oras
+JUSTOCI_ALLOW_INSECURE=1 cargo bench -p swe_justoci_bench --bench build --features justoci,publish,oras
 ```
 
-`OCIMAGE_ALLOW_INSECURE=1` opts the publish runner into plain HTTP — required for local `registry:2`.
+`JUSTOCI_ALLOW_INSECURE=1` opts the publish runner into plain HTTP — required for local `registry:2`.
 
 **4. Run a single case**
 

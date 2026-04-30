@@ -37,7 +37,7 @@ use crate::api::sink::{
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_RETRIES: u32 = 3;
 const MAX_RETRY_BACKOFF_MS: u64 = 800;
-const ENV_ALLOW_INSECURE: &str = "OCIMAGE_ALLOW_INSECURE";
+const ENV_ALLOW_INSECURE: &str = "JUSTOCI_ALLOW_INSECURE";
 
 /// The canonical OCI empty config blob.
 ///

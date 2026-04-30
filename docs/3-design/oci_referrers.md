@@ -68,10 +68,10 @@ referrer descriptors:
 }
 ```
 
-`ocimage verify` walks this list, classifies each entry by
+`justoci verify` walks this list, classifies each entry by
 `artifactType`, and validates the corresponding pillar.
 
-## How `ocimage build` writes them
+## How `justoci build` writes them
 
 `build` produces the primary artifact in the OCI Image Layout.
 `attest` writes the SLSA statement / SBOM / signature bytes to
@@ -100,7 +100,7 @@ as the first entry plus every referrer:
 }
 ```
 
-## How `ocimage publish` ships them
+## How `justoci publish` ships them
 
 The publish path treats every entry in `index.json` as a
 manifest to push:
@@ -111,7 +111,7 @@ manifest to push:
   tag). The registry indexes them automatically because of the
   `subject` field. PUT the primary manifest LAST (commit point).
 
-## How `ocimage verify` finds them
+## How `justoci verify` finds them
 
 For local refs: walk `index.json` directly.
 

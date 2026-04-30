@@ -10,7 +10,7 @@ time a parallel project comes up.
 
 **`justoci` stands alone.** The name is by design — "just OCI"
 declares that everything an operator needs for the OCI artifact
-pipeline lives in this one tool. Users `cargo install ocimage`
+pipeline lives in this one tool. Users `cargo install justoci`
 and ship; nothing else is required at runtime.
 
 This means:
@@ -36,7 +36,7 @@ artifacts:
 | **Verify** | Pull from local layout or registry-ref. Validate SLSA + SBOM + cosign signature; gate against optional `--policy` file. |
 | **Pull** | Fetch artifact + referrers from a registry into a local OCI Image Layout, with on-the-fly digest verification. |
 | **Auth** | Anonymous / Basic / Bearer / env-var resolution at the CLI boundary. Optional Vault / Docker-config providers behind feature flags. |
-| **CLI** | `ocimage` operator binary: `build`, `publish`, `verify`, `sbom`, `inspect`. Typed exit codes per spec doc §7. |
+| **CLI** | `justoci` operator binary: `build`, `publish`, `verify`, `sbom`, `inspect`. Typed exit codes per spec doc §7. |
 
 ## What's out of scope
 

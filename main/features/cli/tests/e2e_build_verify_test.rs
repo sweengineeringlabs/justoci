@@ -1,5 +1,5 @@
 //! End-to-end pipeline test: build → publish → verify, all via
-//! spawned `ocimage` subprocesses.
+//! spawned `justoci` subprocesses.
 //!
 //! ## Trade-off documented
 //!
@@ -51,7 +51,7 @@ fn test_e2e_build_then_publish_then_verify_succeeds() {
     // 0 without actually emitting blobs (e.g. spec parse succeeds
     // but layer assembly silently no-ops). The OCI Image Layout
     // file invariants below confirm real bytes hit disk.
-    common::ocimage_bin()
+    common::oci_bin()
         .arg("build")
         .arg(&spec)
         .arg("-o")
@@ -91,7 +91,7 @@ fn test_e2e_build_then_publish_then_verify_succeeds() {
     // copy the layout (e.g. only writes `index.json` but skips
     // `blobs/`) — verify in step 3 would then fail with "missing
     // blob" instead of validating the round-trip.
-    common::ocimage_bin()
+    common::oci_bin()
         .arg("publish")
         .arg(&build_dir)
         .arg("--to")
@@ -131,7 +131,7 @@ fn test_e2e_build_then_publish_then_verify_succeeds() {
     // contract documented in spec-doc §7 and the task spec's verify
     // section ("Pure 'not found' + no policy → exit 0
     // (informational)").
-    common::ocimage_bin()
+    common::oci_bin()
         .arg("verify")
         .arg(&publish_dest)
         .assert()
@@ -157,7 +157,7 @@ fn test_e2e_build_attested_then_publish_then_verify_finds_pillars() {
     let build_dir = tmp.path().join("oci-build-out");
     let publish_dest = tmp.path().join("static-served");
 
-    common::ocimage_bin()
+    common::oci_bin()
         .arg("build")
         .arg(&spec)
         .arg("-o")
@@ -165,7 +165,7 @@ fn test_e2e_build_attested_then_publish_then_verify_finds_pillars() {
         .assert()
         .success();
 
-    common::ocimage_bin()
+    common::oci_bin()
         .arg("publish")
         .arg(&build_dir)
         .arg("--to")
@@ -173,7 +173,7 @@ fn test_e2e_build_attested_then_publish_then_verify_finds_pillars() {
         .assert()
         .success();
 
-    common::ocimage_bin()
+    common::oci_bin()
         .arg("verify")
         .arg(&publish_dest)
         .assert()

@@ -32,7 +32,7 @@ payload_bytes = 16777216
 
 # ── push: just-push (oci_publish, in-process HTTP) ──────────────────────────
 # Requires: docker run -d -p 5000:5000 registry:2
-# Run: OCIMAGE_ALLOW_INSECURE=1 cargo bench -p swe_justoci_bench --bench push --features just-push,oras
+# Run: JUSTOCI_ALLOW_INSECURE=1 cargo bench -p swe_justoci_bench --bench push --features just-push,oras
 
 [[case]]
 bench         = "push"
@@ -78,7 +78,7 @@ registry      = "localhost:5000"
 
 # ── pipeline: just-pipeline (build + sign + push, in-process) ───────────────
 # Requires: docker run -d -p 5000:5000 registry:2
-# Run: OCIMAGE_ALLOW_INSECURE=1 cargo bench -p swe_justoci_bench --bench pipeline --features just-pipeline,oras,cosign
+# Run: JUSTOCI_ALLOW_INSECURE=1 cargo bench -p swe_justoci_bench --bench pipeline --features just-pipeline,oras,cosign
 
 [[case]]
 bench         = "pipeline"

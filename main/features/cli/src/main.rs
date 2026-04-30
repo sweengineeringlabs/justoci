@@ -1,4 +1,4 @@
-//! `ocimage` — clap dispatcher + spec-doc §7 exit-code mapping.
+//! `oci` — clap dispatcher + spec-doc §7 exit-code mapping.
 //!
 //! All business logic lives in the `swe_justoci_oci_cli` library
 //! (`cmd::*`, `verify_engine`, `policy`, `referrers`). This binary
@@ -55,7 +55,7 @@ enum Commands {
     /// Push a built OCI image dir to a sink (HTTP static dir or
     /// OCI Distribution v2 registry).
     Publish {
-        /// OCI image dir produced by `ocimage build`.
+        /// OCI image dir produced by `justoci build`.
         dir: PathBuf,
 
         /// Sink URI. Either `http:<path>` for a static-served
@@ -135,7 +135,7 @@ enum Commands {
         policy: Option<PathBuf>,
 
         /// Auth mode for registry references. Same shape as
-        /// `ocimage publish`. `env` (default) reads
+        /// `justoci publish`. `env` (default) reads
         /// REGISTRY_TOKEN, then REGISTRY_USERNAME+REGISTRY_PASSWORD.
         /// `basic` requires --registry-username +
         /// --registry-password. `bearer` requires
@@ -217,7 +217,7 @@ enum Commands {
 
 fn main() -> ExitCode {
     // We initialise tracing AFTER parsing args so `--quiet` can
-    // suppress it. EnvFilter still reads RUST_LOG / OCIMAGE_LOG.
+    // suppress it. EnvFilter still reads RUST_LOG / JUSTOCI_LOG.
     let cli = Cli::parse();
 
     if !cli.quiet {
@@ -236,7 +236,7 @@ fn main() -> ExitCode {
             // error context. Stdout already carries any partial
             // machine-readable output the subcommand wrote
             // before failing.
-            let _ = writeln!(std::io::stderr(), "ocimage: {e}");
+            let _ = writeln!(std::io::stderr(), "justoci: {e}");
             // Walk error sources for the full chain.
             let mut src = std::error::Error::source(&e);
             while let Some(s) = src {

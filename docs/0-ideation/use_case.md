@@ -15,9 +15,9 @@ Concrete actor + action + outcome descriptions for justoci. Each use case names 
 **Flow**:
 1. CI builds `firmware.bin` and places it in `build/`.
 2. A `spec.toml` describes the artifact: `kind = "raw_image"`, one layer pointing at `build/firmware.bin`, vendor annotations.
-3. CI runs `ocimage build spec.toml -o dist/`.
-4. CI runs `ocimage publish dist/ --to registry:ghcr.io/acme/gateway-fw:2.1.0`.
-5. The procurement team runs `ocimage verify ghcr.io/acme/gateway-fw:2.1.0 --policy policy.toml` against a policy that requires SLSA L2 and a known signer identity.
+3. CI runs `justoci build spec.toml -o dist/`.
+4. CI runs `justoci publish dist/ --to registry:ghcr.io/acme/gateway-fw:2.1.0`.
+5. The procurement team runs `justoci verify ghcr.io/acme/gateway-fw:2.1.0 --policy policy.toml` against a policy that requires SLSA L2 and a known signer identity.
 
 **Outcome**: The artifact is in the customer's registry with SLSA provenance, a CycloneDX SBOM, and a cosign signature — all attached as OCI 1.1 referrers. The customer's verify step passes without the firmware team writing any signing code.
 
@@ -34,9 +34,9 @@ Concrete actor + action + outcome descriptions for justoci. Each use case names 
 **Flow**:
 1. Training pipeline produces `model-7b-q4.gguf`.
 2. `spec.toml` with `kind = "oci_artifact"`, media type `application/vnd.org.gguf.weights`, layer pointing at the weights file.
-3. `ocimage build` + `ocimage publish` runs in CI on artifact finalization.
+3. `justoci build` + `justoci publish` runs in CI on artifact finalization.
 4. Inference team pulls via `oras pull` or `crane pull` — no justoci required on the consumer side.
-5. Security team periodically runs `ocimage verify` to confirm the referrers chain is intact.
+5. Security team periodically runs `justoci verify` to confirm the referrers chain is intact.
 
 **Outcome**: Any inference team can verify the weights digest against the Rekor transparency log entry without trusting the distribution channel.
 
@@ -53,8 +53,8 @@ Concrete actor + action + outcome descriptions for justoci. Each use case names 
 **Flow**:
 1. Existing image build produces `kernel`, `initrd`, `rootfs.ext4`.
 2. One `spec.toml` with `kind = "vm_image"`, three layers, SLSA + SBOM defaults.
-3. Replace the bash chain with two commands: `ocimage build` + `ocimage publish`.
-4. Existing consumers (`ocimage verify` or cosign) need no changes — wire format is identical.
+3. Replace the bash chain with two commands: `justoci build` + `justoci publish`.
+4. Existing consumers (`justoci verify` or cosign) need no changes — wire format is identical.
 
 **Outcome**: Three-tool bash chain replaced by one spec file. SLSA provenance, SBOM, and cosign signature are always present — not conditional on a bash script running all three steps.
 
@@ -70,7 +70,7 @@ Concrete actor + action + outcome descriptions for justoci. Each use case names 
 
 **Flow**:
 1. Maintainer writes a `spec.toml`: `kind = "oci_artifact"`, custom media type for the unikernel format, one layer.
-2. GitHub Actions workflow runs `ocimage build` + `ocimage publish` on every tag push.
+2. GitHub Actions workflow runs `justoci build` + `justoci publish` on every tag push.
 3. Integrator pulls via registry reference, fetches referrers, validates signature.
 
 **Outcome**: The project distributes via OCI with provenance from day one, using the same GitHub Actions OIDC token it already has — no key management, no new infrastructure.

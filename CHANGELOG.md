@@ -30,10 +30,10 @@ Initial release of the justoci attested OCI artifact pipeline.
 - `swe_justoci_oci_build` — `LoadedSpec` → OCI Image Layout v1.1. Streaming compression (gzip/zstd), deterministic tar (sorted entries, `mtime=0`, `uid:gid=0:0`), atomic output rename.
 - `swe_justoci_attest` — Three attestation pillars: SLSA Provenance v1, CycloneDX 1.5 / SPDX 2.3 SBOM, cosign+Rekor coupled signing. All emitted as OCI 1.1 referrer manifests. Migrated default signer from cosign subprocess to `sigstore-rs` SDK (issue #13).
 - `swe_justoci_oci_publish` — OCI Image Layout → HTTP sink or OCI Distribution v2 registry. Per-blob HEAD-then-PUT idempotency; manifest written last (atomicity). Resumable on transient failures.
-- `swe_justoci_oci_cli` — `ocimage` operator CLI: `build`, `publish`, `verify`, `sbom`, `inspect`. Typed exit codes per spec §7. Auth: anonymous, bearer/env-var, Vault (feature-gated), Docker-config (feature-gated).
+- `swe_justoci_oci_cli` — `justoci` operator CLI: `build`, `publish`, `verify`, `sbom`, `inspect`. Typed exit codes per spec §7. Auth: anonymous, bearer/env-var, Vault (feature-gated), Docker-config (feature-gated).
 
 **Registry operations:**
-- `ocimage verify` supports both local OCI Image Layout paths and live registry references. On-the-fly digest verification during streaming pull; rejection before write on mismatch.
+- `justoci verify` supports both local OCI Image Layout paths and live registry references. On-the-fly digest verification during streaming pull; rejection before write on mismatch.
 - `--require-referrers` strict mode: exits 5 on a registry that does not implement the OCI 1.1 referrers endpoint.
 - `--policy` file gating: SLSA level, cosign `builder_id` glob, required SBOM format.
 - Bearer token dance (OCI Distribution §3.4) handled transparently.

@@ -1,4 +1,4 @@
-//! `ocimage inspect <spec-or-ref>`.
+//! `justoci inspect <spec-or-ref>`.
 //!
 //! Two modes (auto-detected, same rule as `sbom`):
 //!

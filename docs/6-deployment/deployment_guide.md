@@ -2,7 +2,7 @@
 
 **Audience**: DevOps, operators
 
-The `ocimage` CLI is designed for CI pipelines: typed exit codes
+The `justoci` CLI is designed for CI pipelines: typed exit codes
 per error class, no interactive prompts, no stderr-vs-stdout
 ambiguity.
 
@@ -32,10 +32,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install ocimage CLI
+      - name: Install justoci CLI
         run: |
           # Once justoci is published to crates.io / a release feed,
-          # this step becomes `cargo install ocimage` or downloading
+          # this step becomes `cargo install justoci` or downloading
           # a prebuilt. Until then, build from source:
           git clone https://github.com/sweengineeringlabs/justoci.git
           git clone https://github.com/sweengineeringlabs/justcas.git
@@ -47,33 +47,33 @@ jobs:
 
       - name: Build artifact
         run: |
-          ocimage build firmware.spec.toml -o dist/
+          justoci build firmware.spec.toml -o dist/
 
       - name: Push to registry
         run: |
-          ocimage publish dist/ \
+          justoci publish dist/ \
             --to registry:${REGISTRY}/${REPO}:${{ github.ref_name }} \
             --auth bearer \
             --registry-token ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify the just-published artifact
         run: |
-          ocimage verify ${REGISTRY}/${REPO}:${{ github.ref_name }} \
+          justoci verify ${REGISTRY}/${REPO}:${{ github.ref_name }} \
             --auth bearer \
             --registry-token ${{ secrets.GITHUB_TOKEN }} \
-            --policy .ocimage/release-policy.toml
+            --policy .justoci/release-policy.toml
 ```
 
 ## Routing on exit code
 
-CI pipelines route on `ocimage`'s exit code, never on stderr
+CI pipelines route on `justoci`'s exit code, never on stderr
 parsing.
 
 ```yaml
       - name: Build with retry on transient errors
         run: |
           set +e
-          ocimage build spec.toml -o dist/
+          justoci build spec.toml -o dist/
           rc=$?
           set -e
           case $rc in
@@ -81,9 +81,9 @@ parsing.
             1)  echo "::error::spec error — fix spec.toml"; exit 1 ;;
             2)  echo "::error::build error — fix inputs"; exit 1 ;;
             3)  echo "::warning::attest error — re-running with --no-attest"
-                ocimage build spec.toml -o dist/ --no-attest ;;
+                justoci build spec.toml -o dist/ --no-attest ;;
             4)  echo "::warning::publish transient — retry"
-                ocimage build spec.toml -o dist/ ;;
+                justoci build spec.toml -o dist/ ;;
             *)  echo "::error::unexpected ($rc)"; exit 1 ;;
           esac
 ```
@@ -104,7 +104,7 @@ Production verify usually runs from a deploy pipeline against an
 artifact promoted to a registry:
 
 ```toml
-# .ocimage/prod-verify.toml
+# .justoci/prod-verify.toml
 [slsa]
 level = 2
 
@@ -121,10 +121,10 @@ Then in the deploy job:
 ```yaml
       - name: Verify before deploy
         run: |
-          ocimage verify ${REGISTRY}/${REPO}:${{ inputs.tag }} \
+          justoci verify ${REGISTRY}/${REPO}:${{ inputs.tag }} \
             --auth bearer \
             --registry-token ${{ secrets.DEPLOY_TOKEN }} \
-            --policy .ocimage/prod-verify.toml
+            --policy .justoci/prod-verify.toml
 ```
 
 If the artifact at the tag wasn't built by the expected workflow
@@ -141,14 +141,14 @@ prod *without rebuilding*:
 ```yaml
   build-and-stage:
     steps:
-      - run: ocimage build spec.toml -o dist/
+      - run: justoci build spec.toml -o dist/
       - run: |
-          ocimage publish dist/ \
+          justoci publish dist/ \
             --to registry:staging.acme.io/firmware:${{ github.sha }}
       - id: digest
         run: |
           # Capture the manifest digest for promotion below
-          DIGEST=$(ocimage inspect dist/ | grep manifest_digest | awk '{print $2}')
+          DIGEST=$(justoci inspect dist/ | grep manifest_digest | awk '{print $2}')
           echo "digest=$DIGEST" >> $GITHUB_OUTPUT
 
   promote:
@@ -158,8 +158,8 @@ prod *without rebuilding*:
       - run: |
           # Pull from staging, push to prod by digest — no rebuild,
           # signatures + SLSA + SBOM all carry across.
-          ocimage verify staging.acme.io/firmware:${{ github.sha }} \
-            --policy .ocimage/staging-policy.toml
+          justoci verify staging.acme.io/firmware:${{ github.sha }} \
+            --policy .justoci/staging-policy.toml
           # ... promote via your registry's tag/digest mechanism ...
 ```
 

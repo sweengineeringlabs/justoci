@@ -271,7 +271,7 @@ complete substitution rules.
 The spec hash can be re-computed by anyone with the spec file:
 
 ```bash
-ocimage inspect spec.toml
+justoci inspect spec.toml
 # spec_hash: sha256:<hex>
 # canonical: { ... canonical JSON ... }
 ```

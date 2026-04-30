@@ -1,4 +1,4 @@
-//! `ocimage build <fixture> -o <out>` integration test.
+//! `justoci build <fixture> -o <out>` integration test.
 //!
 //! Runs the actual CLI binary via `assert_cmd` and asserts:
 //!
@@ -19,14 +19,14 @@ use tempfile::TempDir;
 fn test_build_no_attest_emits_oci_layout_with_manifest_digest_on_stdout() {
     // Bug this catches: a refactor that drops the `manifest_digest:`
     // stdout line, or routes it to stderr, would silently break every
-    // CI script that pipes `ocimage build … | grep manifest_digest`
+    // CI script that pipes `justoci build … | grep manifest_digest`
     // into a downstream sign / publish step. Stdout is the data
     // channel; stderr is for diagnostics.
     let tmp = TempDir::new().expect("tempdir");
     let spec = common::stage_firmware_fixture(tmp.path());
     let output_dir: PathBuf = tmp.path().join("oci-out");
 
-    let mut cmd = common::ocimage_bin();
+    let mut cmd = common::oci_bin();
     cmd.arg("build")
         .arg(&spec)
         .arg("-o")
@@ -73,7 +73,7 @@ fn test_build_into_existing_output_dir_fails_with_build_error() {
     let output_dir = tmp.path().join("oci-out");
     std::fs::create_dir_all(&output_dir).unwrap();
 
-    let mut cmd = common::ocimage_bin();
+    let mut cmd = common::oci_bin();
     cmd.arg("build")
         .arg(&spec)
         .arg("-o")
@@ -87,7 +87,7 @@ fn test_build_into_existing_output_dir_fails_with_build_error() {
 fn test_build_with_attestation_emits_referrer_descriptors_in_index() {
     // Bug this catches: a CLI that runs attest() but doesn't wire the
     // outputs into index.json as referrers — operators downstream
-    // (`ocimage verify`, `oras discover`, `crane manifest`) would not
+    // (`justoci verify`, `oras discover`, `crane manifest`) would not
     // see the SLSA / SBOM blobs even though they exist in the CAS.
     // The presence of two extra `manifests` entries (one SLSA + one
     // SBOM, sign opted out) confirms the wiring.
@@ -95,7 +95,7 @@ fn test_build_with_attestation_emits_referrer_descriptors_in_index() {
     let spec = common::stage_firmware_fixture_attested_no_sign(tmp.path());
     let output_dir = tmp.path().join("oci-out");
 
-    let mut cmd = common::ocimage_bin();
+    let mut cmd = common::oci_bin();
     cmd.arg("build").arg(&spec).arg("-o").arg(&output_dir);
     cmd.assert().success();
 

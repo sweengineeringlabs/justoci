@@ -1,4 +1,4 @@
-//! One module per `ocimage` subcommand.
+//! One module per `oci` subcommand.
 //!
 //! Each module exposes a single typed-Result entry point that
 //! `main` dispatches into. Subcommand internals never use

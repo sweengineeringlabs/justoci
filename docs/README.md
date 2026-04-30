@@ -9,13 +9,13 @@ organised by SDLC phase.
 
 ```bash
 # Build a spec
-ocimage build spec.toml -o dist/
+justoci build spec.toml -o dist/
 
 # Publish to a registry
-ocimage publish dist/ --to registry:ghcr.io/acme/firmware:1.4.2
+justoci publish dist/ --to registry:ghcr.io/acme/firmware:1.4.2
 
 # Verify a registry artifact
-ocimage verify ghcr.io/acme/firmware:1.4.2 --policy policy.toml
+justoci verify ghcr.io/acme/firmware:1.4.2 --policy policy.toml
 ```
 
 See [`0-ideation/value_proposition.md`](./0-ideation/value_proposition.md)
@@ -23,7 +23,7 @@ for the product framing, [`3-design/spec_v0.md`](./3-design/spec_v0.md)
 for the spec format, [`3-design/integration_guide.md`](./3-design/integration_guide.md)
 for embedding the pipeline in your own systems, and
 [`6-deployment/deployment_guide.md`](./6-deployment/deployment_guide.md)
-for using `ocimage` in CI.
+for using `justoci` in CI.
 
 ## Structure
 

@@ -2,11 +2,11 @@
 
 **Audience**: Contributors, architects
 
-The `ocimage` operator CLI exposes five subcommands. Each is a
+The `justoci` operator CLI exposes five subcommands. Each is a
 functional requirement validated by integration tests in
 `cli/tests/`.
 
-## `ocimage build <spec.toml> [-o <dir>] [--no-attest]`
+## `justoci build <spec.toml> [-o <dir>] [--no-attest]`
 
 **Functional requirement.** Given a valid spec file, produce an
 OCI Image Layout v1.1 directory containing the artifact + its
@@ -27,7 +27,7 @@ diagnosis; the final `<output>` only exists when self-consistent.
 **Exit codes.** `0` success; `1` SpecError; `2` BuildError;
 `3` AttestError.
 
-## `ocimage publish <dir> --to <sink> [--auth ...]`
+## `justoci publish <dir> --to <sink> [--auth ...]`
 
 **Functional requirement.** Given a built OCI Image Layout
 directory and a sink, push the artifact + all referrers to that
@@ -57,7 +57,7 @@ confirmed-present).
 
 **Exit code.** `4` PublishError.
 
-## `ocimage verify <ref> [--policy <file>] [--auth ...] [--require-referrers]`
+## `justoci verify <ref> [--policy <file>] [--auth ...] [--require-referrers]`
 
 **Functional requirement.** Given an artifact reference (local
 OCI layout path or `<host>/<repo>:<tag>`), validate its SLSA +
@@ -114,7 +114,7 @@ documents the no-op explicitly.
 **Exit code.** `5` VerifyError (verify pillar failed or policy
 violation, or strict-mode `ReferrersNotSupported`).
 
-## `ocimage sbom <spec-or-ref> [-o <file>] [--format <cyclonedx|spdx>]`
+## `justoci sbom <spec-or-ref> [-o <file>] [--format <cyclonedx|spdx>]`
 
 **Functional requirement.** Emit or extract an SBOM.
 
@@ -126,7 +126,7 @@ violation, or strict-mode `ReferrersNotSupported`).
 
 **Format flag.** Default `cyclonedx`; `spdx` for SPDX 2.3.
 
-## `ocimage inspect <spec-or-ref>`
+## `justoci inspect <spec-or-ref>`
 
 **Functional requirement.** For debugging.
 

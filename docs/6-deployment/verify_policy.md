@@ -2,7 +2,7 @@
 
 **Audience**: Operators, security engineers
 
-The `--policy <policy.toml>` flag on `ocimage verify` gates the
+The `--policy <policy.toml>` flag on `justoci verify` gates the
 artifact against operator-defined rules. Without `--policy`,
 verify reports each pillar's status without enforcing.
 
@@ -152,18 +152,18 @@ Empty `[slsa]` and `[sbom]` sections — no gate on those pillars.
 
 ## Where policy files live
 
-By convention, in `.ocimage/<name>.toml` at the repo root. CI
+By convention, in `.justoci/<name>.toml` at the repo root. CI
 workflows reference them by relative path:
 
 ```yaml
-ocimage verify ${REGISTRY}/${REPO}:${TAG} \
-  --policy .ocimage/release-policy.toml
+justoci verify ${REGISTRY}/${REPO}:${TAG} \
+  --policy .justoci/release-policy.toml
 ```
 
 Different policies for different environments:
 
 ```
-.ocimage/
+.justoci/
 ├── release-policy.toml      # used for promoting to prod
 ├── staging-policy.toml      # used in CI
 └── dev-policy.toml          # permissive, for dev iteration

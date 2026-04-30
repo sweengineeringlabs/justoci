@@ -19,7 +19,7 @@ Sigstore staging).
 | P2 | `cli` — 5 subcommands, typed exit codes | ✓ | `11f73d1` |
 | Cleanup | Drop legacy ImageSpec / BuildManifest from build | ✓ | `a59d2e5` |
 | P3 | vmisolate-side `oci-image-builder` adapter | ✓ | `ab8631b` |
-| v0.2 | `ocimage verify <registry-ref>` (pull-then-verify) | ✓ | `31a7c89` |
+| v0.2 | `justoci verify <registry-ref>` (pull-then-verify) | ✓ | `31a7c89` |
 | CI | GitHub Actions for both repos | ✓ | `b47085e` / `44f4ad9` |
 | Docs | SDLC-phase documentation tree | ✓ | `b0f55e1` |
 

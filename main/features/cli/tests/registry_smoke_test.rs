@@ -54,7 +54,7 @@
 //!   - The Drop-guard idiom for cleanup is exactly what we need,
 //!     and is six lines.
 //!   - Explicit `-p <host>:5000` lets us pick a free port at test
-//!     time and pass the same `host:port` to `ocimage publish`.
+//!     time and pass the same `host:port` to `justoci publish`.
 //!
 //! ## Flake mitigations
 //!
@@ -275,7 +275,7 @@ fn read_manifest_digest_from_index(build_dir: &Path) -> String {
         .to_string()
 }
 
-/// Run `ocimage publish <build_dir> --to registry:127.0.0.1:<port>/<repo>:<tag>`
+/// Run `justoci publish <build_dir> --to registry:127.0.0.1:<port>/<repo>:<tag>`
 /// against the live registry and return the captured stdout (used
 /// by callers to assert pushed/skipped/bytes lines).
 fn run_publish(build_dir: &Path, port: u16, repo: &str, tag: &str) -> String {
@@ -284,7 +284,7 @@ fn run_publish(build_dir: &Path, port: u16, repo: &str, tag: &str) -> String {
     // CLI's `parse_auth_mode("basic", …)` requires non-empty
     // username + password and there is no `--no-auth` flag on
     // publish today. The registry ignores the header.
-    let out = common::ocimage_bin()
+    let out = common::oci_bin()
         .arg("publish")
         .arg(build_dir)
         .arg("--to")
@@ -295,26 +295,26 @@ fn run_publish(build_dir: &Path, port: u16, repo: &str, tag: &str) -> String {
         .arg("anon")
         .arg("--registry-password")
         .arg("anon")
-        // The registry sink consults OCIMAGE_ALLOW_INSECURE for
+        // The registry sink consults JUSTOCI_ALLOW_INSECURE for
         // http:// (vs the default https://). Without this, the
         // sink would attempt a TLS handshake against the plain-
         // HTTP registry container and fail with a confusing
         // "tls handshake error" instead of completing.
-        .env("OCIMAGE_ALLOW_INSECURE", "1")
+        .env("JUSTOCI_ALLOW_INSECURE", "1")
         .output()
-        .expect("ocimage publish spawn");
+        .expect("justoci publish spawn");
     if !out.status.success() {
         panic!(
-            "ocimage publish failed (status {:?}): stdout={:?} stderr={:?}",
+            "justoci publish failed (status {:?}): stdout={:?} stderr={:?}",
             out.status,
             String::from_utf8_lossy(&out.stdout),
             String::from_utf8_lossy(&out.stderr),
         );
     }
-    String::from_utf8(out.stdout).expect("ocimage publish stdout is utf-8")
+    String::from_utf8(out.stdout).expect("justoci publish stdout is utf-8")
 }
 
-/// Parse the `bytes:   <n>` line `ocimage publish` writes to stdout.
+/// Parse the `bytes:   <n>` line `justoci publish` writes to stdout.
 /// The CLI emits exactly this prefix per `cli/src/main.rs` Publish
 /// arm; if the prefix changes, this helper's panic message tells
 /// the operator which contract just shifted.
@@ -374,17 +374,17 @@ fn test_full_pipeline_against_real_registry_2_container() {
     // a real registry", not "cosign keyless works". Attestation has
     // its own dedicated test (`e2e_build_verify_test`'s attested
     // variant) that exercises slsa + sbom referrers.
-    let build_out = common::ocimage_bin()
+    let build_out = common::oci_bin()
         .arg("build")
         .arg(&spec)
         .arg("-o")
         .arg(&build_dir)
         .arg("--no-attest")
         .output()
-        .expect("ocimage build spawn");
+        .expect("justoci build spawn");
     if !build_out.status.success() {
         panic!(
-            "ocimage build failed (status {:?}): stdout={:?} stderr={:?}",
+            "justoci build failed (status {:?}): stdout={:?} stderr={:?}",
             build_out.status,
             String::from_utf8_lossy(&build_out.stdout),
             String::from_utf8_lossy(&build_out.stderr),
@@ -429,20 +429,20 @@ fn test_full_pipeline_against_real_registry_2_container() {
     );
 
     // ── 4. verify against the live registry ───────────────────
-    // `ocimage verify <ref>` pulls into a tempdir then runs the
+    // `justoci verify <ref>` pulls into a tempdir then runs the
     // local-verify path. Anonymous (`--no-auth`) because registry:2
     // accepts both. Exit 0 with `slsa: missing` etc. is the
     // documented contract for `--no-attest` builds.
-    let verify_out = common::ocimage_bin()
+    let verify_out = common::oci_bin()
         .arg("verify")
         .arg(format!("127.0.0.1:{host_port}/{repo}:{tag}"))
         .arg("--no-auth")
-        .env("OCIMAGE_ALLOW_INSECURE", "1")
+        .env("JUSTOCI_ALLOW_INSECURE", "1")
         .output()
-        .expect("ocimage verify spawn");
+        .expect("justoci verify spawn");
     if !verify_out.status.success() {
         panic!(
-            "ocimage verify failed (status {:?}): stdout={:?} stderr={:?}",
+            "justoci verify failed (status {:?}): stdout={:?} stderr={:?}",
             verify_out.status,
             String::from_utf8_lossy(&verify_out.stdout),
             String::from_utf8_lossy(&verify_out.stderr),
@@ -503,7 +503,7 @@ fn test_full_pipeline_against_real_registry_2_container() {
     //
     // The bug this catches: a publish that ignores the HEAD
     // response and re-uploads every blob unconditionally on
-    // every invocation. That would make `ocimage publish` worse
+    // every invocation. That would make `justoci publish` worse
     // than `docker push` and burn enormous bandwidth on rebuilds.
     let stdout2 = run_publish(&build_dir, host_port, repo, tag);
     let pushed2 = count_prefix(&stdout2, "pushed:");

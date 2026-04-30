@@ -32,7 +32,7 @@ fn stage_spec(name: &str, spec_text: &str, source_files: &[&str]) -> TempDir {
 
 #[test]
 fn test_vm_image_example_parses() {
-    let toml = include_str!("../../examples/vm-image.toml");
+    let toml = include_str!("../../../../examples/vm-image.toml");
     let dir = stage_spec(
         "vm-image.toml",
         toml,
@@ -68,7 +68,7 @@ fn test_vm_image_example_parses() {
 
 #[test]
 fn test_oci_artifact_example_parses() {
-    let toml = include_str!("../../examples/oci-artifact.toml");
+    let toml = include_str!("../../../../examples/oci-artifact.toml");
     let dir = stage_spec("oci-artifact.toml", toml, &["weights/llama-7b.q4_0.gguf"]);
     let spec = parse_and_validate(dir.path().join("oci-artifact.toml"))
         .expect("parses")
@@ -86,7 +86,7 @@ fn test_oci_artifact_example_parses() {
 
 #[test]
 fn test_firmware_example_parses() {
-    let toml = include_str!("../../examples/firmware.toml");
+    let toml = include_str!("../../../../examples/firmware.toml");
     let dir = stage_spec("firmware.toml", toml, &["build/firmware.bin"]);
     let spec = parse_and_validate(dir.path().join("firmware.toml"))
         .expect("parses")

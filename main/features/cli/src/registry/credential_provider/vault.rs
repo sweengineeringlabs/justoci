@@ -3,7 +3,7 @@
 //!
 //! Compiled only when the parent crate is built with `--features vault`.
 //! Without that feature, `vaultrs` is not in the dep graph and this
-//! module does not exist; the default `ocimage` binary keeps the same
+//! module does not exist; the default `oci` binary keeps the same
 //! shape it had before this provider was added.
 //!
 //! ## Why a trait-bound backend

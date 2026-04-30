@@ -222,7 +222,7 @@ pub struct RealCosignVerifyInvoker {
 
 impl RealCosignVerifyInvoker {
     pub fn new() -> Self {
-        let bin = std::env::var_os("OCIMAGE_COSIGN_BIN")
+        let bin = std::env::var_os("JUSTOCI_COSIGN_BIN")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("cosign"));
         RealCosignVerifyInvoker { bin }
@@ -733,7 +733,7 @@ fn extract_rekor_log_index(bundle_bytes: &[u8]) -> Option<u64> {
 fn write_payload_tempfile(content: &str) -> std::io::Result<PathBuf> {
     let mut path = std::env::temp_dir();
     path.push(format!(
-        "ocimage-verify-payload-{}-{}.txt",
+        "justoci-verify-payload-{}-{}.txt",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

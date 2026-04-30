@@ -10,7 +10,7 @@
 //! the same on-disk dir as build's, or a separate CAS spool that
 //! a later step copies into a registry. Wiring referrer manifests
 //! into `index.json` is a layout-level concern that belongs at
-//! whatever orchestrator is composing build + attest. For ocimage
+//! whatever orchestrator is composing build + attest. For justoci
 //! that orchestrator is the CLI; for vmisolate's pipeline it would
 //! be a higher layer.
 //!

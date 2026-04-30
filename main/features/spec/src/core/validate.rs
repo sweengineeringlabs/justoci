@@ -27,7 +27,7 @@ const SUPPORTED_VERSIONS: &[&str] = &["0"];
 /// `spec_dir` is required because `[[layers]] source = "..."` paths
 /// are spec-relative — the caller (saf::parse) passes the spec file's
 /// parent directory, not the process cwd, so the same spec file
-/// validates the same way regardless of where `ocimage` is invoked.
+/// validates the same way regardless of where `justoci` is invoked.
 pub(crate) fn validate(raw: RawSpec, spec_dir: &Path) -> Result<Spec, SpecError> {
     // ── spec_version ──────────────────────────────────────────────
     let spec_version = match raw.spec_version.as_str() {

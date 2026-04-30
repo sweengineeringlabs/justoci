@@ -5,7 +5,7 @@
 //! Compiled only when the parent crate is built with
 //! `--features docker-config`. Without that feature, neither
 //! `base64` nor `dirs` is in the dep graph and this module does not
-//! exist; the default `ocimage` binary keeps the same shape it had
+//! exist; the default `oci` binary keeps the same shape it had
 //! before this provider was added.
 //!
 //! ## What this provider IS NOT

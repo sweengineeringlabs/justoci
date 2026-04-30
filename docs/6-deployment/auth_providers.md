@@ -2,9 +2,9 @@
 
 **Audience**: Operators, platform engineers
 
-> **TLDR**: Credential chain for `ocimage publish/verify` — anonymous → env-var (token/basic/bearer) → Docker config file → Vault KV; selected via `--auth` flag; Vault and docker-config are opt-in Cargo features.
+> **TLDR**: Credential chain for `justoci publish/verify` — anonymous → env-var (token/basic/bearer) → Docker config file → Vault KV; selected via `--auth` flag; Vault and docker-config are opt-in Cargo features.
 
-`ocimage publish` and `ocimage verify <registry-ref>` resolve
+`justoci publish` and `justoci verify <registry-ref>` resolve
 credentials through a chain of [`CredentialProvider`] impls. The
 operator-facing surface is the `--auth` flag plus a small set of
 companion flags / environment variables. This page documents each
@@ -69,7 +69,7 @@ PATs / OIDC-issued tokens.
 
 Pulls the registry credentials from a HashiCorp Vault KV v2 path.
 **Only available when the CLI is built with `cargo build --features vault`**;
-the default `ocimage` binary doesn't pull the `vaultrs` /
+the default `justoci` binary doesn't pull the `vaultrs` /
 `tokio` deps and rejects `--auth vault` at parse time with a
 specific "rebuild with `--features vault`" error.
 
@@ -82,8 +82,8 @@ without per-tool config.
 
 For AppRole / Kubernetes / JWT auth, callers can pre-acquire a
 Vault token by external means (e.g. `vault login -method=approle`)
-and export it as `VAULT_TOKEN` for `ocimage` to consume. AppRole
-login from inside `ocimage` itself is a follow-up.
+and export it as `VAULT_TOKEN` for `justoci` to consume. AppRole
+login from inside `justoci` itself is a follow-up.
 
 ### Path layout
 
@@ -92,7 +92,7 @@ Default `--vault-base-path` is `secret/data/registry` — splitting
 to mount `secret` + prefix `registry`. So:
 
 ```
-ocimage verify ghcr.io/acme/img:v1 --auth vault
+justoci verify ghcr.io/acme/img:v1 --auth vault
 ```
 
 reads `secret/data/registry/ghcr.io` on the wire.
@@ -141,17 +141,17 @@ token into `${VAULT_TOKEN_FILE}`. The CI workflow does:
 export VAULT_ADDR=https://vault.internal:8200
 export VAULT_TOKEN="$(cat $VAULT_TOKEN_FILE)"
 
-# Build ocimage with the vault feature on.
+# Build justoci with the vault feature on.
 cargo install --path cli --features vault
 
 # Push an artifact, with Vault providing the registry creds.
-ocimage publish ./build/out \
+justoci publish ./build/out \
     --to registry:ghcr.io/acme/img:0.1.0 \
     --auth vault \
     --vault-base-path secret/data/registry
 ```
 
-Behind the scenes: `ocimage` calls `VaultClient::new(VAULT_ADDR, VAULT_TOKEN)`,
+Behind the scenes: `justoci` calls `VaultClient::new(VAULT_ADDR, VAULT_TOKEN)`,
 reads `secret/data/registry/ghcr.io`, finds
 `{ "token": "ghp_..." }`, and the publish path sees
 `RegistryAuth::Bearer { token }` — same wire shape as
@@ -164,7 +164,7 @@ command line.
 Reads registry credentials from the static `~/.docker/config.json`
 file an operator already wrote when they ran `docker login`.
 **Only available when the CLI is built with `cargo build --features docker-config`**;
-the default `ocimage` binary doesn't pull the `base64` / `dirs`
+the default `justoci` binary doesn't pull the `base64` / `dirs`
 deps and rejects `--auth docker-config` at parse time with a
 specific "rebuild with `--features docker-config`" error.
 
@@ -257,23 +257,23 @@ flavour of resolved auth; otherwise the entry maps to Basic.
 
 ### Worked example (CI runner that already ran `docker login`)
 
-The CI workflow logs into the registry once, then drives `ocimage`
+The CI workflow logs into the registry once, then drives `justoci`
 without re-supplying credentials:
 
 ```bash
-# Install ocimage with the docker-config feature on.
+# Install justoci with the docker-config feature on.
 cargo install --path cli --features docker-config
 
 # Existing CI step writes ~/.docker/config.json:
 echo "$GHCR_PAT" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
 
-# ocimage reuses the credential without re-receiving it on the CLI:
-ocimage publish ./build/out \
+# justoci reuses the credential without re-receiving it on the CLI:
+justoci publish ./build/out \
     --to registry:ghcr.io/acme/img:0.1.0 \
     --auth docker-config
 ```
 
-Behind the scenes: `ocimage` reads `~/.docker/config.json`, finds
+Behind the scenes: `justoci` reads `~/.docker/config.json`, finds
 `auths."ghcr.io"`, decodes the `auth` field, and the publish path
 sees `RegistryAuth::Basic { username, password }` — same wire
 shape `--auth basic --registry-username ... --registry-password ...`
@@ -284,7 +284,7 @@ For an operator who keeps a non-default config file (e.g. a
 per-project copy under `./.docker/config.json`):
 
 ```bash
-ocimage verify ghcr.io/acme/img:v1 \
+justoci verify ghcr.io/acme/img:v1 \
     --auth docker-config \
     --docker-config-path ./.docker/config.json
 ```
@@ -300,12 +300,12 @@ export VAULT_TOKEN=dev-only
 vault kv put secret/registry/ghcr.io \
     username=ci-user password=ci-secret
 
-# Run ocimage with the vault feature on.
+# Run justoci with the vault feature on.
 cargo run --features vault -p swe_justoci_oci_cli -- \
     verify ghcr.io/acme/img:v1 --auth vault
 ```
 
-The `ocimage` integration test that exercises this end-to-end is
+The `justoci` integration test that exercises this end-to-end is
 `cli/tests/vault_provider_test.rs`, gated `#[ignore]` so a
 default `cargo test` skips it. CI without Vault produces no
 spurious failure; running it locally requires the `vault` binary

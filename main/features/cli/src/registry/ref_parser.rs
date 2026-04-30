@@ -1,7 +1,7 @@
 //! Registry reference parser.
 //!
 //! Accepts the canonical OCI Distribution reference forms used by
-//! `ocimage verify <ref>` once the local-path branch has already
+//! `justoci verify <ref>` once the local-path branch has already
 //! ruled out a directory:
 //!
 //! - `host/repo:tag`            (`ghcr.io/acme/img:v1`)

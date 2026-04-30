@@ -1,4 +1,4 @@
-//! `ocimage inspect <spec | image-dir>` integration test.
+//! `justoci inspect <spec | image-dir>` integration test.
 
 mod common;
 
@@ -16,7 +16,7 @@ fn test_inspect_spec_emits_canonical_json_that_round_trips_as_json() {
     let tmp = TempDir::new().expect("tempdir");
     let spec = common::stage_firmware_fixture(tmp.path());
 
-    let mut cmd = common::ocimage_bin();
+    let mut cmd = common::oci_bin();
     cmd.arg("inspect").arg(&spec);
     let output = cmd.assert().success().get_output().clone();
 
@@ -36,14 +36,14 @@ fn test_inspect_spec_emits_canonical_json_that_round_trips_as_json() {
 fn test_inspect_image_dir_lists_manifest_digest_and_layers() {
     // Bug this catches: inspect dropping the manifest_digest line or
     // re-naming it would break operators using
-    // `ocimage inspect <dir> | grep manifest_digest:` to fetch the
+    // `justoci inspect <dir> | grep manifest_digest:` to fetch the
     // digest for a downstream verify. Stable line prefixes are part
     // of the contract.
     let tmp = TempDir::new().expect("tempdir");
     let spec = common::stage_firmware_fixture(tmp.path());
     let image_dir = tmp.path().join("oci-out");
 
-    common::ocimage_bin()
+    common::oci_bin()
         .arg("build")
         .arg(&spec)
         .arg("-o")
@@ -52,7 +52,7 @@ fn test_inspect_image_dir_lists_manifest_digest_and_layers() {
         .assert()
         .success();
 
-    common::ocimage_bin()
+    common::oci_bin()
         .arg("inspect")
         .arg(&image_dir)
         .assert()

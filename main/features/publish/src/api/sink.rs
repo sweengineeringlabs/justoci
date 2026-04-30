@@ -40,7 +40,7 @@ pub enum PublishSink {
     Registry {
         /// Registry host. `host[:port]`, no scheme. The sink
         /// derives `https://` by default; `http://` is opt-in via
-        /// `OCIMAGE_ALLOW_INSECURE=1` (used only for local
+        /// `JUSTOCI_ALLOW_INSECURE=1` (used only for local
         /// `registry:2` testing).
         registry: String,
         /// Repository inside the registry, e.g. `acme/llmboot`.

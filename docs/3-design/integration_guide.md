@@ -18,7 +18,7 @@ verifier — they need to know which media types to look for
 
 ## Shape 1 — as a CLI in CI
 
-The most common integration. `ocimage` ships as a single static
+The most common integration. `justoci` ships as a single static
 binary; you call `build`, `publish`, and `verify` from your CI
 workflow with the same exit-code discipline you use for any other
 build tool.
@@ -45,7 +45,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install ocimage CLI
+      - name: Install justoci CLI
         run: |
           # Until justoci ships a release binary feed (issue #12),
           # build from source. Both repos must be checked out as
@@ -58,22 +58,22 @@ jobs:
         with:
           cosign-release: v2.4.0
 
-      - name: ocimage build
-        run: ocimage build firmware.spec.toml -o dist/
+      - name: justoci build
+        run: justoci build firmware.spec.toml -o dist/
 
-      - name: ocimage publish
+      - name: justoci publish
         run: |
-          ocimage publish dist/ \
+          justoci publish dist/ \
             --to registry:${REGISTRY}/${REPO}:${{ github.ref_name }} \
             --auth bearer \
             --registry-token ${{ secrets.GITHUB_TOKEN }}
 
-      - name: ocimage verify
+      - name: justoci verify
         run: |
-          ocimage verify ${REGISTRY}/${REPO}:${{ github.ref_name }} \
+          justoci verify ${REGISTRY}/${REPO}:${{ github.ref_name }} \
             --auth bearer \
             --registry-token ${{ secrets.GITHUB_TOKEN }} \
-            --policy .ocimage/release-policy.toml
+            --policy .justoci/release-policy.toml
 ```
 
 The CLI never prompts. Every failure is a typed exit code per
@@ -215,7 +215,7 @@ exits 5 if any gate fails.
 `policy.toml`:
 
 ```toml
-# .ocimage/prod-verify.toml — gates a production deploy.
+# .justoci/prod-verify.toml — gates a production deploy.
 
 [slsa]
 # Minimum SLSA level the artifact's referrer must declare.
@@ -243,10 +243,10 @@ Then in the deploy job:
 ```yaml
       - name: Verify before deploy
         run: |
-          ocimage verify ${REGISTRY}/${REPO}:${{ inputs.tag }} \
+          justoci verify ${REGISTRY}/${REPO}:${{ inputs.tag }} \
             --auth bearer \
             --registry-token ${{ secrets.DEPLOY_TOKEN }} \
-            --policy .ocimage/prod-verify.toml
+            --policy .justoci/prod-verify.toml
 ```
 
 If the artifact at the tag wasn't built by the expected workflow
@@ -291,6 +291,6 @@ SBOM is CycloneDX/SPDX.
 - **Key management.** Cosign-keyless mode delegates to
   Sigstore's Fulcio; cosign-key mode reads a key file you
   provide. Bring-your-own KMS is a host concern.
-- **Policy distribution.** The `.ocimage/policy.toml` file
+- **Policy distribution.** The `.justoci/policy.toml` file
   lives in *your* repository. Distributing it to deploy
   pipelines is your CI's job, not justoci's.

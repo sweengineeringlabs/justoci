@@ -308,8 +308,8 @@ cd justoci</code></pre>
 
     <p><strong>3. Run the three-way comparison</strong></p>
     <pre><code>docker run -d -p 5000:5000 registry:2
-OCIMAGE_ALLOW_INSECURE=1 cargo bench -p swe_justoci_bench --bench build --features justoci,publish,oras</code></pre>
-    <p><code>OCIMAGE_ALLOW_INSECURE=1</code> opts the publish runner into plain HTTP — required for a local <code>registry:2</code>.</p>
+JUSTOCI_ALLOW_INSECURE=1 cargo bench -p swe_justoci_bench --bench build --features justoci,publish,oras</code></pre>
+    <p><code>JUSTOCI_ALLOW_INSECURE=1</code> opts the publish runner into plain HTTP — required for a local <code>registry:2</code>.</p>
 
     <p><strong>4. Run a single case</strong></p>
     <pre><code>cargo bench -p swe_justoci_bench --bench build -- "build_oci_artifact/16mb"</code></pre>

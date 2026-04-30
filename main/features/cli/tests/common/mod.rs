@@ -109,9 +109,9 @@ pub fn posix(p: &Path) -> String {
     p.to_string_lossy().replace('\\', "/")
 }
 
-/// Locate the compiled `ocimage` binary using `assert_cmd`'s
+/// Locate the compiled `oci` binary using `assert_cmd`'s
 /// CARGO_BIN_EXE machinery. Lives here to keep the lookup uniform
 /// across test files.
-pub fn ocimage_bin() -> assert_cmd::Command {
-    assert_cmd::Command::cargo_bin("ocimage").expect("ocimage binary built")
+pub fn oci_bin() -> assert_cmd::Command {
+    assert_cmd::Command::cargo_bin("oci").expect("oci binary built")
 }

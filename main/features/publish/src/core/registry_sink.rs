@@ -73,7 +73,7 @@ const MAX_RETRY_BACKOFF_MS: u64 = 800;
 
 /// Env var: opt-in to plain-HTTP transport for local `registry:2`
 /// testing. Any value other than literal `"1"` is ignored.
-const ENV_ALLOW_INSECURE: &str = "OCIMAGE_ALLOW_INSECURE";
+const ENV_ALLOW_INSECURE: &str = "JUSTOCI_ALLOW_INSECURE";
 
 /// Bundle of registry coordinates threaded through every wire call.
 /// Reduces argument-count noise and locks the (base_url, repository,

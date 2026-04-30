@@ -85,7 +85,7 @@ fn test_publish_http_includes_referrer_config_and_layer_blobs() {
 #[test]
 fn test_publish_registry_uploads_every_referrer_blob() {
     let _g = env_lock();
-    env::set_var("OCIMAGE_ALLOW_INSECURE", "1");
+    env::set_var("JUSTOCI_ALLOW_INSECURE", "1");
 
     let src = tempfile::tempdir().unwrap();
     let layout = Fixture::default()
@@ -163,5 +163,5 @@ fn test_publish_registry_uploads_every_referrer_blob() {
         expected_blob_uploads,
     );
 
-    env::remove_var("OCIMAGE_ALLOW_INSECURE");
+    env::remove_var("JUSTOCI_ALLOW_INSECURE");
 }

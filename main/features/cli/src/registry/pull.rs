@@ -35,7 +35,7 @@
 //!   file is removed so callers can never see tampered bytes on
 //!   disk.
 //! - Manifests are written as blobs (`<dest>/blobs/sha256/<hex>`)
-//!   AND referenced from `index.json` — same shape `ocimage build`
+//!   AND referenced from `index.json` — same shape `justoci build`
 //!   produces, so the local-verify path treats a pulled layout
 //!   identically to a built one.
 //! - Per-request 60-second timeout; per-blob 3-attempt retry on
@@ -109,7 +109,7 @@ const HEADER_DOCKER_CONTENT_DIGEST: &str = "Docker-Content-Digest";
 /// Env var: opt-in to plain-HTTP transport for local `registry:2`
 /// testing. Mirrors publish; any value other than literal `"1"` is
 /// ignored.
-const ENV_ALLOW_INSECURE: &str = "OCIMAGE_ALLOW_INSECURE";
+const ENV_ALLOW_INSECURE: &str = "JUSTOCI_ALLOW_INSECURE";
 
 /// Knobs that govern the pull pipeline beyond the bare reference +
 /// auth. Defaults match the historic behaviour the v0.2 surface
@@ -124,7 +124,7 @@ pub struct PullOptions {
     ///   registries don't error out.
     /// - `true`: a 404 escalates to
     ///   [`RegistryPullError::ReferrersNotSupported`]. Operators
-    ///   set this via `ocimage verify --require-referrers` when
+    ///   set this via `justoci verify --require-referrers` when
     ///   they refuse to deploy artifacts from registries that
     ///   don't implement the OCI 1.1 referrers API.
     pub require_referrers: bool,
@@ -526,7 +526,7 @@ fn fetch_manifest(
 /// the 404 case, governed by `opts.require_referrers`:
 ///
 /// - `false` (default): 404 is silently treated as "no referrers".
-///   This keeps `ocimage verify` working against legacy registries
+///   This keeps `justoci verify` working against legacy registries
 ///   so the operator gets a soft "no attestations found" verdict
 ///   rather than a hard pull failure.
 /// - `true`: 404 surfaces as

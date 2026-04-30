@@ -1,8 +1,8 @@
-//! `ocimage` — the operator-facing CLI for justoci.
+//! `oci` — the operator-facing CLI for justoci.
 //!
 //! This crate is dual-target:
 //!
-//! - **`bin/ocimage`** is the binary operators run. It's a thin
+//! - **`bin/justoci`** is the binary operators run. It's a thin
 //!   clap-driven dispatcher: parse args → call into one of the
 //!   `cmd::*` entry points → translate the typed `CliError` into
 //!   the spec-doc §7 exit code. The binary owns no business logic.

@@ -194,7 +194,7 @@ a hosted build platform that meets SLSA's isolation requirements
 (GitHub Actions reusable workflow, Tekton chains, etc.). The spec
 declares the *intended* level; the build environment determines
 whether the claim is *valid*. Mismatched claims surface as a hard
-validation error from `ocimage verify`.
+validation error from `justoci verify`.
 
 All three artefacts live as **OCI 1.1 referrers** of the main artifact —
 pull the artifact, you can list and verify its attestations from the
@@ -329,17 +329,17 @@ Each example demonstrates a different default-attestation outcome.
 ## CLI surface
 
 ```
-ocimage build   <spec.toml> [-o <dir>]      # produce artifact + attestations
-ocimage publish <dir> --to <sink>           # push to HTTP / OCI registry
-ocimage verify  <ref> [--auth ...]          # verify SLSA + SBOM + signature
-ocimage sbom    <spec-or-ref> [-o <file>]   # emit/extract SBOM only
-ocimage inspect <spec-or-ref>               # canonical form + spec hash
+justoci build   <spec.toml> [-o <dir>]      # produce artifact + attestations
+justoci publish <dir> --to <sink>           # push to HTTP / OCI registry
+justoci verify  <ref> [--auth ...]          # verify SLSA + SBOM + signature
+justoci sbom    <spec-or-ref> [-o <file>]   # emit/extract SBOM only
+justoci inspect <spec-or-ref>               # canonical form + spec hash
 ```
 
 Build and publish are decoupled so CI can sign artifacts in a
 hardened environment separate from the build host.
 
-### `ocimage verify <ref>` — local path or registry reference
+### `justoci verify <ref>` — local path or registry reference
 
 `<ref>` is detected path-first:
 
@@ -354,16 +354,16 @@ hardened environment separate from the build host.
   hashed during streaming and rejected on digest mismatch — a
   tampered registry can never feed verify a swapped layer.
 
-Auth flags mirror `ocimage publish`:
+Auth flags mirror `justoci publish`:
 
 ```
-ocimage verify ghcr.io/acme/app:v1
-ocimage verify ghcr.io/acme/app:v1 --auth bearer --registry-token $GH_PAT
-ocimage verify ghcr.io/acme/app:v1 --auth vault [--vault-base-path PATH]
-ocimage verify ghcr.io/acme/app:v1 --auth docker-config [--docker-config-path PATH]
-ocimage verify localhost:5000/acme/app:0.1.0 --no-auth
-ocimage verify registry.io/acme/app@sha256:<hex> --policy policy.toml
-ocimage verify ghcr.io/acme/app:v1 --require-referrers
+justoci verify ghcr.io/acme/app:v1
+justoci verify ghcr.io/acme/app:v1 --auth bearer --registry-token $GH_PAT
+justoci verify ghcr.io/acme/app:v1 --auth vault [--vault-base-path PATH]
+justoci verify ghcr.io/acme/app:v1 --auth docker-config [--docker-config-path PATH]
+justoci verify localhost:5000/acme/app:0.1.0 --no-auth
+justoci verify registry.io/acme/app@sha256:<hex> --policy policy.toml
+justoci verify ghcr.io/acme/app:v1 --require-referrers
 ```
 
 `--auth env` (default) reads `REGISTRY_TOKEN`, then
@@ -383,7 +383,7 @@ The 401-then-`WWW-Authenticate` bearer-token dance (OCI Distribution
 §3.4) is handled transparently — public repos on Docker Hub / GHCR
 work without operator-supplied credentials.
 
-The same flag set applies to `ocimage publish --to registry:<host>/<repo>:<tag>`.
+The same flag set applies to `justoci publish --to registry:<host>/<repo>:<tag>`.
 
 #### `--require-referrers` (strict OCI 1.1 mode)
 
@@ -395,7 +395,7 @@ no attestations; a registry that does not implement it returns 404
 on the endpoint URL.
 
 Default behaviour: a 404 on `/referrers/` is silently treated as
-"no referrers". This keeps `ocimage verify` working against
+"no referrers". This keeps `justoci verify` working against
 pre-OCI-1.1 registries (legacy mirrors, older Harbor versions,
 third-party proxies that haven't been upgraded). The verdict
 table reports the SLSA / SBOM / signature pillars as `missing`,

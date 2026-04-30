@@ -1,4 +1,4 @@
-//! `ocimage publish <dir> --to <sink> [--auth ...] [--no-auth]`.
+//! `justoci publish <dir> --to <sink> [--auth ...] [--no-auth]`.
 //!
 //! `<sink>` is a URI-shaped string:
 //!
@@ -232,7 +232,7 @@ fn resolve_docker_config_for_registry(
     })
 }
 
-/// Auth selector for `ocimage publish`. Mirrors verify's
+/// Auth selector for `justoci publish`. Mirrors verify's
 /// `VerifyAuthMode`: either an explicit anonymous push (no
 /// `Authorization:` header sent, no env lookup attempted) or one of
 /// the [`AuthMode`] variants resolved from `--auth`.

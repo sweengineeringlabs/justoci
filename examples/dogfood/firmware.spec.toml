@@ -1,4 +1,4 @@
-# Dogfood fixture — proves the full ocimage pipeline end-to-end
+# Dogfood fixture — proves the full justoci pipeline end-to-end
 # against `registry:2` (issue #6, no-attest path).
 #
 # This is the smallest viable raw_image: one uncompressed layer with a
@@ -15,7 +15,7 @@
 spec_version = "0"
 id           = "dogfood-firmware:0.1.0"
 kind         = "raw_image"
-description  = "Dogfood fixture — proves the full ocimage pipeline end-to-end against registry:2"
+description  = "Dogfood fixture — proves the full justoci pipeline end-to-end against registry:2"
 
 [[layers]]
 source     = "payload.bin"

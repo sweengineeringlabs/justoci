@@ -166,7 +166,7 @@ jobs:
   smoke:
     # Real-registry smoke test — runs the cargo test gated with
     # `#[ignore]`, which spawns a `registry:2` container, drives
-    # `ocimage build → publish → verify` against it, and asserts
+    # `oci build → publish → verify` against it, and asserts
     # the OCI Distribution v2 wire shape the httpmock-based tests
     # in `test` cannot catch (upload-session UUIDs, real HEAD-then-
     # PUT statefulness across re-publishes, manifest media-type

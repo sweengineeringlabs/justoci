@@ -1,4 +1,4 @@
-//! `--policy <policy.toml>` parser for `ocimage verify`.
+//! `--policy <policy.toml>` parser for `justoci verify`.
 //!
 //! The policy file declares one or more gates the verifier must
 //! satisfy in addition to structural-integrity checks. v0 supports:

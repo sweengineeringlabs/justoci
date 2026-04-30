@@ -63,7 +63,7 @@ pub enum CliError {
     #[error("verify error: {0}")]
     Verify(#[from] VerifyError),
 
-    /// Registry-pull failure on `ocimage verify <registry-ref>`.
+    /// Registry-pull failure on `justoci verify <registry-ref>`.
     /// Maps to exit 5 — same class as a verify failure, since the
     /// pull is the prelude to verify. Distinct variant so a CLI
     /// log scraper can route on "the artifact wasn't even

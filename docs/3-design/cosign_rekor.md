@@ -60,7 +60,7 @@ is exercised on both code paths.
 
 ```
                 ┌──────────────────────────────┐
-                │  ocimage build               │
+                │  justoci build               │
                 └──────────────┬───────────────┘
                                │
                                ▼
@@ -245,7 +245,7 @@ pattern. `RealCosignVerifyInvoker` invokes `cosign verify-blob`;
 
 The same coupling rule applies on verify: a cosign signature
 without a confirmed Rekor entry is a `VerifiedNotRecorded`
-outcome, and `ocimage verify` reports it as not-fully-attested
+outcome, and `justoci verify` reports it as not-fully-attested
 (or with `--policy [sign].required = true`, fails the verify with
 exit 5).
 
@@ -256,10 +256,10 @@ Fulcio) and the audit cost-benefit was wrong for v0.2.
 
 ## What this means in practice
 
-If you're an operator running `ocimage build` and Rekor is down:
+If you're an operator running `justoci build` and Rekor is down:
 
 ```bash
-$ ocimage build spec.toml -o dist/
+$ justoci build spec.toml -o dist/
 Error: AttestError::SignNotRecorded
   signature was not recorded in Rekor (artifact is unsigned):
   rekor.sigstore.dev returned 503 (Service Unavailable)
@@ -275,7 +275,7 @@ signature.
 If you're verifying:
 
 ```bash
-$ ocimage verify ghcr.io/acme/firmware:1.4.2
+$ justoci verify ghcr.io/acme/firmware:1.4.2
 [OK] SLSA statement found and well-formed (level 2)
 [OK] CycloneDX SBOM found (8 components)
 [FAIL] Cosign signature found but no Rekor log entry — artifact is

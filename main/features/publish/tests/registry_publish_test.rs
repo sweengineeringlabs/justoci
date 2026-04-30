@@ -22,7 +22,7 @@ use oci_publish::{publish, ImageDir, PublishSink, RegistryAuth};
 use common::{Fixture, Referrer};
 
 /// Serializes tests in this file (and any sibling registry test
-/// files in this package) that mutate `OCIMAGE_ALLOW_INSECURE`.
+/// files in this package) that mutate `JUSTOCI_ALLOW_INSECURE`.
 /// `cargo test` runs tests in a single binary in parallel; without
 /// this lock, two tests racing to set/unset the env var would flake.
 fn env_lock() -> MutexGuard<'static, ()> {
@@ -50,7 +50,7 @@ fn env_lock() -> MutexGuard<'static, ()> {
 #[test]
 fn test_publish_registry_emits_head_before_put_for_every_non_manifest_blob() {
     let _g = env_lock();
-    env::set_var("OCIMAGE_ALLOW_INSECURE", "1");
+    env::set_var("JUSTOCI_ALLOW_INSECURE", "1");
 
     let src = tempfile::tempdir().unwrap();
     let layout = Fixture::default().build(src.path());
@@ -147,7 +147,7 @@ fn test_publish_registry_emits_head_before_put_for_every_non_manifest_blob() {
     // bytes_uploaded includes the manifest's bytes; just assert > 0.
     assert!(outcome.bytes_uploaded > 0);
 
-    env::remove_var("OCIMAGE_ALLOW_INSECURE");
+    env::remove_var("JUSTOCI_ALLOW_INSECURE");
 }
 
 /// Catches: a publish that fails to short-circuit when HEAD
@@ -157,7 +157,7 @@ fn test_publish_registry_emits_head_before_put_for_every_non_manifest_blob() {
 #[test]
 fn test_publish_registry_skips_blobs_already_present_at_head() {
     let _g = env_lock();
-    env::set_var("OCIMAGE_ALLOW_INSECURE", "1");
+    env::set_var("JUSTOCI_ALLOW_INSECURE", "1");
 
     let src = tempfile::tempdir().unwrap();
     let layout = Fixture::default().build(src.path());
@@ -223,7 +223,7 @@ fn test_publish_registry_skips_blobs_already_present_at_head() {
     // Manifest still pushed.
     assert_eq!(outcome.digests_pushed.len(), 1);
 
-    env::remove_var("OCIMAGE_ALLOW_INSECURE");
+    env::remove_var("JUSTOCI_ALLOW_INSECURE");
 }
 
 /// Catches: a publish that doesn't include `Authorization: Bearer
@@ -234,7 +234,7 @@ fn test_publish_registry_skips_blobs_already_present_at_head() {
 #[test]
 fn test_publish_registry_sends_bearer_token_when_provided() {
     let _g = env_lock();
-    env::set_var("OCIMAGE_ALLOW_INSECURE", "1");
+    env::set_var("JUSTOCI_ALLOW_INSECURE", "1");
 
     let src = tempfile::tempdir().unwrap();
     Fixture::default().build(src.path());
@@ -303,7 +303,7 @@ fn test_publish_registry_sends_bearer_token_when_provided() {
         "the HEAD mock that requires Authorization: Bearer <token> must have matched at least once",
     );
 
-    env::remove_var("OCIMAGE_ALLOW_INSECURE");
+    env::remove_var("JUSTOCI_ALLOW_INSECURE");
 }
 
 /// Catches: referrer-manifest blobs being silently dropped. SLSA /
@@ -314,7 +314,7 @@ fn test_publish_registry_sends_bearer_token_when_provided() {
 #[test]
 fn test_publish_registry_pushes_referrer_manifests_under_their_digest() {
     let _g = env_lock();
-    env::set_var("OCIMAGE_ALLOW_INSECURE", "1");
+    env::set_var("JUSTOCI_ALLOW_INSECURE", "1");
 
     let src = tempfile::tempdir().unwrap();
     let layout = Fixture::default()
@@ -393,5 +393,5 @@ fn test_publish_registry_pushes_referrer_manifests_under_their_digest() {
         outcome.digests_pushed,
     );
 
-    env::remove_var("OCIMAGE_ALLOW_INSECURE");
+    env::remove_var("JUSTOCI_ALLOW_INSECURE");
 }

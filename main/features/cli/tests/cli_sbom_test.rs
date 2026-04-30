@@ -1,4 +1,4 @@
-//! `ocimage sbom` integration test — both modes (from spec, from
+//! `justoci sbom` integration test — both modes (from spec, from
 //! built image dir).
 
 mod common;
@@ -17,7 +17,7 @@ fn test_sbom_from_spec_cyclonedx_emits_valid_cyclonedx_json() {
     let spec = common::stage_firmware_fixture_attested_no_sign(tmp.path());
     let out = tmp.path().join("preview.cdx.json");
 
-    common::ocimage_bin()
+    common::oci_bin()
         .arg("sbom")
         .arg(&spec)
         .arg("--format")
@@ -45,7 +45,7 @@ fn test_sbom_from_spec_spdx_emits_valid_spdx_json() {
     let spec = common::stage_firmware_fixture_attested_no_sign(tmp.path());
     let out = tmp.path().join("preview.spdx.json");
 
-    common::ocimage_bin()
+    common::oci_bin()
         .arg("sbom")
         .arg(&spec)
         .arg("--format")
@@ -73,7 +73,7 @@ fn test_sbom_from_image_dir_extracts_emitted_sbom_bytes() {
     let spec = common::stage_firmware_fixture_attested_no_sign(tmp.path());
     let image_dir = tmp.path().join("oci-out");
 
-    common::ocimage_bin()
+    common::oci_bin()
         .arg("build")
         .arg(&spec)
         .arg("-o")
@@ -82,7 +82,7 @@ fn test_sbom_from_image_dir_extracts_emitted_sbom_bytes() {
         .success();
 
     let extracted = tmp.path().join("extracted.cdx.json");
-    common::ocimage_bin()
+    common::oci_bin()
         .arg("sbom")
         .arg(&image_dir)
         .arg("-o")
@@ -107,7 +107,7 @@ fn test_sbom_unknown_format_rejected() {
     let tmp = TempDir::new().expect("tempdir");
     let spec = common::stage_firmware_fixture(tmp.path());
 
-    common::ocimage_bin()
+    common::oci_bin()
         .arg("sbom")
         .arg(&spec)
         .arg("--format")

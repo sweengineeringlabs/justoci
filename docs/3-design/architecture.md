@@ -12,7 +12,7 @@ The four diagrams below cover the four shapes of the system: which crates depend
 
 ```mermaid
 flowchart TD
-  cli["cli<br/>(ocimage binary)"]
+  cli["cli<br/>(justoci binary)"]
   attest["attest<br/>(SLSA + SBOM + cosign)"]
   build["build<br/>(spec → OCI layout)"]
   publish["publish<br/>(OCI Distribution v2)"]
@@ -38,7 +38,7 @@ flowchart TD
   attest -.default.-> sigstoreRs
 ```
 
-### Block: runtime layout of `ocimage build`
+### Block: runtime layout of `justoci build`
 
 ```mermaid
 flowchart LR
@@ -83,13 +83,13 @@ flowchart TD
 
 ```mermaid
 sequenceDiagram
-  participant Op as Operator (ocimage)
+  participant Op as Operator (justoci)
   participant Pub as publish::Sink
   participant Reg as OCI Registry
   participant Ver as Verifier
   participant Cosign as Sigstore Verifier
 
-  Op->>Pub: ocimage publish dist/ --to registry:tag
+  Op->>Pub: justoci publish dist/ --to registry:tag
   Pub->>Reg: PUT manifest + blobs
   Pub->>Reg: PUT referrer manifests (SLSA, SBOM, sig)
   Reg-->>Pub: digests
@@ -157,7 +157,7 @@ sequenceDiagram
 | `build` | `LoadedSpec` → OCI Image Layout v1.1 directory | `build(loaded, output_dir)` |
 | `attest` | Three pillars (SLSA / SBOM / cosign+Rekor) | `attest(built, attestation, cas)` |
 | `publish` | OCI Image Layout → HTTP or OCI Distribution sink | `publish(image, sink)` |
-| `cli` | `ocimage` operator CLI | binary |
+| `cli` | `justoci` operator CLI | binary |
 | `systemd` | Generate xkvm boot `.service` units (will move out) | `generate_unit` |
 
 The seventh primitive is [`justcas`](https://github.com/sweengineeringlabs/justcas)

@@ -1,4 +1,4 @@
-//! Integration tests for `ocimage verify --require-referrers`.
+//! Integration tests for `justoci verify --require-referrers`.
 //!
 //! The `--require-referrers` strict-mode flag (Issue #2) escalates a
 //! 404 from `/v2/<repo>/referrers/<digest>` from a soft warning to a
@@ -9,7 +9,7 @@
 //! The pull layer is exercised via the public library API so each
 //! test stands up an httpmock-faked OCI Distribution v2 endpoint
 //! and asserts the typed error returned (or absence of error). We
-//! don't shell out to the `ocimage` binary because the binary's
+//! don't shell out to the `justoci` binary because the binary's
 //! clap layer is already covered by `cli_exit_codes_test.rs` — the
 //! contract under test here is the strict-mode wire path.
 //!
@@ -27,7 +27,7 @@ use swe_justoci_oci_cli::registry::{
     pull_anonymous_into_image_dir_with_options, PullOptions, RegistryPullError,
 };
 
-/// Serialises tests that mutate `OCIMAGE_ALLOW_INSECURE`. Same
+/// Serialises tests that mutate `JUSTOCI_ALLOW_INSECURE`. Same
 /// pattern `registry_pull_test.rs` uses; without it, parallel tests
 /// racing the env var would flake.
 fn env_lock() -> MutexGuard<'static, ()> {
@@ -117,7 +117,7 @@ fn mount_image_minus_referrers(server: &MockServer, repo: &str, tag: &str, image
 
 // Catches: a regression that escalates a 404 on `/referrers/` to
 // an error in the DEFAULT (no-flag) path. Pre-OCI-1.1 registries
-// must keep working; an `ocimage verify ghcr.io/legacy/img:v1`
+// must keep working; an `justoci verify ghcr.io/legacy/img:v1`
 // against a registry that doesn't host attestations should still
 // pull the artifact, write a complete image layout, and let the
 // local-verify layer report "no referrers found" softly. Without
@@ -126,7 +126,7 @@ fn mount_image_minus_referrers(server: &MockServer, repo: &str, tag: &str, image
 #[test]
 fn test_pull_404_on_referrers_default_mode_silently_tolerated() {
     let _g = env_lock();
-    env::set_var("OCIMAGE_ALLOW_INSECURE", "1");
+    env::set_var("JUSTOCI_ALLOW_INSECURE", "1");
 
     let image = compose_minimal_image();
     let server = MockServer::start();
@@ -165,7 +165,7 @@ fn test_pull_404_on_referrers_default_mode_silently_tolerated() {
         "default-mode pull must still write index.json (the layout is complete with zero referrers)"
     );
 
-    env::remove_var("OCIMAGE_ALLOW_INSECURE");
+    env::remove_var("JUSTOCI_ALLOW_INSECURE");
 }
 
 // ── Strict mode: 404 on referrers escalates to typed error ────────
@@ -182,7 +182,7 @@ fn test_pull_404_on_referrers_default_mode_silently_tolerated() {
 #[test]
 fn test_pull_404_on_referrers_strict_mode_returns_referrers_not_supported() {
     let _g = env_lock();
-    env::set_var("OCIMAGE_ALLOW_INSECURE", "1");
+    env::set_var("JUSTOCI_ALLOW_INSECURE", "1");
 
     let image = compose_minimal_image();
     let server = MockServer::start();
@@ -236,7 +236,7 @@ fn test_pull_404_on_referrers_strict_mode_returns_referrers_not_supported() {
         "strict-mode failure must NOT write index.json (else consumers see a referrer-less artifact as complete)",
     );
 
-    env::remove_var("OCIMAGE_ALLOW_INSECURE");
+    env::remove_var("JUSTOCI_ALLOW_INSECURE");
 }
 
 // Catches: a strict-mode regression that triggers
@@ -251,7 +251,7 @@ fn test_pull_404_on_referrers_strict_mode_returns_referrers_not_supported() {
 #[test]
 fn test_pull_strict_mode_accepts_200_with_empty_referrers_list() {
     let _g = env_lock();
-    env::set_var("OCIMAGE_ALLOW_INSECURE", "1");
+    env::set_var("JUSTOCI_ALLOW_INSECURE", "1");
 
     let image = compose_minimal_image();
     let server = MockServer::start();
@@ -289,7 +289,7 @@ fn test_pull_strict_mode_accepts_200_with_empty_referrers_list() {
         "strict mode + 200-with-empty-referrers must produce a complete layout",
     );
 
-    env::remove_var("OCIMAGE_ALLOW_INSECURE");
+    env::remove_var("JUSTOCI_ALLOW_INSECURE");
 }
 
 // ── Verify-dispatch level: --require-referrers maps to exit 5 ─────
@@ -307,7 +307,7 @@ fn test_verify_dispatch_strict_mode_returns_cli_error_registry_pull() {
     use swe_justoci_oci_cli::cmd::verify;
 
     let _g = env_lock();
-    env::set_var("OCIMAGE_ALLOW_INSECURE", "1");
+    env::set_var("JUSTOCI_ALLOW_INSECURE", "1");
 
     let image = compose_minimal_image();
     let server = MockServer::start();
@@ -343,7 +343,7 @@ fn test_verify_dispatch_strict_mode_returns_cli_error_registry_pull() {
         other => panic!("expected CliError::RegistryPull(ReferrersNotSupported), got {other:?}",),
     }
 
-    env::remove_var("OCIMAGE_ALLOW_INSECURE");
+    env::remove_var("JUSTOCI_ALLOW_INSECURE");
 }
 
 // Catches: the default-mode dispatch regressing — verify with no
@@ -359,7 +359,7 @@ fn test_verify_dispatch_default_mode_does_not_return_referrers_not_supported() {
     use swe_justoci_oci_cli::cmd::verify;
 
     let _g = env_lock();
-    env::set_var("OCIMAGE_ALLOW_INSECURE", "1");
+    env::set_var("JUSTOCI_ALLOW_INSECURE", "1");
 
     let image = compose_minimal_image();
     let server = MockServer::start();
@@ -407,5 +407,5 @@ fn test_verify_dispatch_default_mode_does_not_return_referrers_not_supported() {
         Err(other) => panic!("unexpected error variant: {other:?}"),
     }
 
-    env::remove_var("OCIMAGE_ALLOW_INSECURE");
+    env::remove_var("JUSTOCI_ALLOW_INSECURE");
 }

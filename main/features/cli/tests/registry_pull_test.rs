@@ -1,4 +1,4 @@
-//! Registry-pull integration tests for `ocimage verify <registry-ref>`.
+//! Registry-pull integration tests for `justoci verify <registry-ref>`.
 //!
 //! Each test stands up an httpmock-faked OCI Distribution v2
 //! endpoint, pre-stages the manifests + blobs the pull will fetch,
@@ -6,7 +6,7 @@
 //! tempdir. The pull layer is exercised via the public library API
 //! ([`swe_justoci_oci_cli::registry::pull_into_image_dir`] and
 //! `pull_anonymous_into_image_dir`) — we don't shell out to the
-//! `ocimage` binary because the binary's clap layer is tested
+//! `justoci` binary because the binary's clap layer is tested
 //! separately and the pull contract is at the library boundary.
 //!
 //! Every test names the bug it would catch in its leading comment;
@@ -30,7 +30,7 @@ use swe_justoci_oci_cli::registry::{
     RegistryPullError,
 };
 
-/// Serialises tests in this file that mutate `OCIMAGE_ALLOW_INSECURE`.
+/// Serialises tests in this file that mutate `JUSTOCI_ALLOW_INSECURE`.
 /// Same pattern publish's registry tests use; without it, parallel
 /// tests racing the env var would flake.
 fn env_lock() -> MutexGuard<'static, ()> {
@@ -342,7 +342,7 @@ fn test_ref_parser_accepts_registry_canonical_forms() {
 #[test]
 fn test_pull_streams_layer_bytes_with_digest_check() {
     let _g = env_lock();
-    env::set_var("OCIMAGE_ALLOW_INSECURE", "1");
+    env::set_var("JUSTOCI_ALLOW_INSECURE", "1");
 
     // 1 MiB layer — large enough to ensure streaming (> the 64 KiB
     // chunk size) and small enough not to slow tests.
@@ -381,7 +381,7 @@ fn test_pull_streams_layer_bytes_with_digest_check() {
     );
     assert_eq!(on_disk.len(), big_layer.len(), "size must match");
 
-    env::remove_var("OCIMAGE_ALLOW_INSECURE");
+    env::remove_var("JUSTOCI_ALLOW_INSECURE");
 }
 
 // Catches: the moat. If the pull layer trusts the registry's
@@ -394,7 +394,7 @@ fn test_pull_streams_layer_bytes_with_digest_check() {
 #[test]
 fn test_pull_rejects_digest_mismatch() {
     let _g = env_lock();
-    env::set_var("OCIMAGE_ALLOW_INSECURE", "1");
+    env::set_var("JUSTOCI_ALLOW_INSECURE", "1");
 
     // Compose a legit image, but then stand up the layer endpoint
     // serving DIFFERENT bytes than the manifest's layer digest
@@ -464,7 +464,7 @@ fn test_pull_rejects_digest_mismatch() {
          leaving it there would bypass the digest check on a retry. found at: {blob_path:?}",
     );
 
-    env::remove_var("OCIMAGE_ALLOW_INSECURE");
+    env::remove_var("JUSTOCI_ALLOW_INSECURE");
 }
 
 // Catches: the pull layer not assembling a valid OCI Image
@@ -476,7 +476,7 @@ fn test_pull_rejects_digest_mismatch() {
 #[test]
 fn test_pull_assembles_local_oci_layout_with_referrers() {
     let _g = env_lock();
-    env::set_var("OCIMAGE_ALLOW_INSECURE", "1");
+    env::set_var("JUSTOCI_ALLOW_INSECURE", "1");
 
     let image = compose_served_image(
         b"{\"architecture\":\"amd64\",\"os\":\"linux\"}",
@@ -530,7 +530,7 @@ fn test_pull_assembles_local_oci_layout_with_referrers() {
         }
     }
 
-    env::remove_var("OCIMAGE_ALLOW_INSECURE");
+    env::remove_var("JUSTOCI_ALLOW_INSECURE");
 }
 
 // Catches: the pull writing index.json before all blobs have
@@ -541,7 +541,7 @@ fn test_pull_assembles_local_oci_layout_with_referrers() {
 #[test]
 fn test_pull_index_json_written_last_on_failure() {
     let _g = env_lock();
-    env::set_var("OCIMAGE_ALLOW_INSECURE", "1");
+    env::set_var("JUSTOCI_ALLOW_INSECURE", "1");
 
     // Compose an image where the referrer pull will fail mid-flight
     // (the referrer blob endpoint returns 404 unconditionally, so
@@ -656,7 +656,7 @@ fn test_pull_index_json_written_last_on_failure() {
         "primary manifest blob should be on disk (the pull did make progress before the referrer fetch failed)",
     );
 
-    env::remove_var("OCIMAGE_ALLOW_INSECURE");
+    env::remove_var("JUSTOCI_ALLOW_INSECURE");
 }
 
 // Catches: the pull layer attaching an Authorization header on
@@ -666,7 +666,7 @@ fn test_pull_index_json_written_last_on_failure() {
 #[test]
 fn test_pull_anonymous_does_not_send_authorization_header() {
     let _g = env_lock();
-    env::set_var("OCIMAGE_ALLOW_INSECURE", "1");
+    env::set_var("JUSTOCI_ALLOW_INSECURE", "1");
 
     let image = compose_served_image(b"{}", &[b"layer".to_vec()], &[]);
     let server = MockServer::start();
@@ -725,7 +725,7 @@ fn test_pull_anonymous_does_not_send_authorization_header() {
         "manifest must be fetched exactly once"
     );
 
-    env::remove_var("OCIMAGE_ALLOW_INSECURE");
+    env::remove_var("JUSTOCI_ALLOW_INSECURE");
 }
 
 // Catches: the pull layer dropping the Authorization header on
@@ -735,7 +735,7 @@ fn test_pull_anonymous_does_not_send_authorization_header() {
 #[test]
 fn test_pull_basic_auth_attaches_authorization_header_on_every_request() {
     let _g = env_lock();
-    env::set_var("OCIMAGE_ALLOW_INSECURE", "1");
+    env::set_var("JUSTOCI_ALLOW_INSECURE", "1");
 
     let image = compose_served_image(b"{}", &[b"layer".to_vec()], &[]);
     let server = MockServer::start();
@@ -791,7 +791,7 @@ fn test_pull_basic_auth_attaches_authorization_header_on_every_request() {
         "the manifest mock that requires the Basic auth header must have matched",
     );
 
-    env::remove_var("OCIMAGE_ALLOW_INSECURE");
+    env::remove_var("JUSTOCI_ALLOW_INSECURE");
 }
 
 // Catches: the pull layer dropping the bearer token on
@@ -800,7 +800,7 @@ fn test_pull_basic_auth_attaches_authorization_header_on_every_request() {
 #[test]
 fn test_pull_bearer_token_attaches_authorization_header() {
     let _g = env_lock();
-    env::set_var("OCIMAGE_ALLOW_INSECURE", "1");
+    env::set_var("JUSTOCI_ALLOW_INSECURE", "1");
 
     let image = compose_served_image(b"{}", &[b"layer".to_vec()], &[]);
     let server = MockServer::start();
@@ -851,7 +851,7 @@ fn test_pull_bearer_token_attaches_authorization_header() {
     pull_into_image_dir(&ref_str, &auth, dest.path()).expect("bearer-auth pull must succeed");
     assert!(manifest_mock.hits() >= 1, "manifest mock must have matched");
 
-    env::remove_var("OCIMAGE_ALLOW_INSECURE");
+    env::remove_var("JUSTOCI_ALLOW_INSECURE");
 }
 
 // Catches: the pull layer not implementing the OCI Distribution
@@ -859,12 +859,12 @@ fn test_pull_bearer_token_attaches_authorization_header() {
 // Hub and GHCR work this way: anonymous GET → 401 with
 // `WWW-Authenticate: Bearer realm=…` → fetch token from realm
 // → retry original request with bearer token. Without this,
-// `ocimage verify ghcr.io/anonymous/public:v1` would fail on
+// `justoci verify ghcr.io/anonymous/public:v1` would fail on
 // every public repo.
 #[test]
 fn test_pull_401_triggers_token_dance_and_succeeds_on_retry() {
     let _g = env_lock();
-    env::set_var("OCIMAGE_ALLOW_INSECURE", "1");
+    env::set_var("JUSTOCI_ALLOW_INSECURE", "1");
 
     let image = compose_served_image(b"{}", &[b"x".to_vec()], &[]);
     let server = MockServer::start();
@@ -959,7 +959,7 @@ fn test_pull_401_triggers_token_dance_and_succeeds_on_retry() {
         "the bearer-authenticated manifest GET must have happened (the dance retry)"
     );
 
-    env::remove_var("OCIMAGE_ALLOW_INSECURE");
+    env::remove_var("JUSTOCI_ALLOW_INSECURE");
 }
 
 // Catches: the pull layer not retrying 5xx — a flaky registry
@@ -970,7 +970,7 @@ fn test_pull_401_triggers_token_dance_and_succeeds_on_retry() {
 #[test]
 fn test_pull_5xx_retried_then_succeeds() {
     let _g = env_lock();
-    env::set_var("OCIMAGE_ALLOW_INSECURE", "1");
+    env::set_var("JUSTOCI_ALLOW_INSECURE", "1");
 
     let image = compose_served_image(b"{}", &[b"layer".to_vec()], &[]);
     let server = MockServer::start();
@@ -1051,7 +1051,7 @@ fn test_pull_5xx_retried_then_succeeds() {
         "the 200 mock must have been hit on the third attempt",
     );
 
-    env::remove_var("OCIMAGE_ALLOW_INSECURE");
+    env::remove_var("JUSTOCI_ALLOW_INSECURE");
 }
 
 // Catches: the retry counter being unbounded. A flaky registry
@@ -1061,7 +1061,7 @@ fn test_pull_5xx_retried_then_succeeds() {
 #[test]
 fn test_pull_5xx_after_max_retries_fails_with_typed_error() {
     let _g = env_lock();
-    env::set_var("OCIMAGE_ALLOW_INSECURE", "1");
+    env::set_var("JUSTOCI_ALLOW_INSECURE", "1");
 
     let server = MockServer::start();
     let repo = "always-broken/img";
@@ -1104,7 +1104,7 @@ fn test_pull_5xx_after_max_retries_fails_with_typed_error() {
         "retry count must be bounded between 2 (initial + 1 retry) and 4 (initial + 3 retries), got {hits}",
     );
 
-    env::remove_var("OCIMAGE_ALLOW_INSECURE");
+    env::remove_var("JUSTOCI_ALLOW_INSECURE");
 }
 
 // ── CLI dispatcher integration ────────────────────────────────────

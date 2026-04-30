@@ -42,7 +42,7 @@ fn env_lock() -> MutexGuard<'static, ()> {
 #[test]
 fn test_publish_registry_retry_only_uploads_blobs_not_yet_present() {
     let _g = env_lock();
-    env::set_var("OCIMAGE_ALLOW_INSECURE", "1");
+    env::set_var("JUSTOCI_ALLOW_INSECURE", "1");
 
     let src = tempfile::tempdir().unwrap();
     let layout = Fixture::default().build(src.path());
@@ -223,5 +223,5 @@ fn test_publish_registry_retry_only_uploads_blobs_not_yet_present() {
     // pushed = stuck blob + manifest.
     assert_eq!(outcome.digests_pushed.len(), 2);
 
-    env::remove_var("OCIMAGE_ALLOW_INSECURE");
+    env::remove_var("JUSTOCI_ALLOW_INSECURE");
 }

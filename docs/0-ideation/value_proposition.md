@@ -55,13 +55,13 @@ opinionated tool ships the full pipeline.
 
 You write one TOML file describing your artifact (kernel + initrd +
 rootfs for a VM, or a `.gguf` weights file for an ML model, or a
-flashable firmware blob). You run `ocimage build spec.toml -o dist/`.
+flashable firmware blob). You run `justoci build spec.toml -o dist/`.
 The output is an OCI Image Layout directory with the artifact, an
 SLSA provenance statement pinning the build, a CycloneDX SBOM,
 and a cosign signature with a Rekor transparency log entry, all
-attached as OCI 1.1 referrers. You run `ocimage publish dist/ --to
+attached as OCI 1.1 referrers. You run `justoci publish dist/ --to
 registry:ghcr.io/acme/...` to push to any OCI distribution registry.
-Consumers run `ocimage verify ghcr.io/acme/... --policy policy.toml`
+Consumers run `justoci verify ghcr.io/acme/... --policy policy.toml`
 to validate everything against their own gates. One tool, one spec,
 production-grade attestation.
 

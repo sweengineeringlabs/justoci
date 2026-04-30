@@ -32,7 +32,7 @@ Alphabetized list of terms used in justoci.
 
 **OCI Distribution v2** - The HTTP-based content-addressed blob protocol standardised by OCI (originated in the Docker Registry v2 protocol). All major registries (ghcr.io, ECR, GCR, ACR, Harbor, Quay) speak it. justoci speaks it natively; Docker the tool is not required.
 
-**OCI Image Layout** - An on-disk directory format defined by the OCI Image Spec. `ocimage build` produces an OCI Image Layout v1.1 directory directly consumable by `oras pull`, `crane pull`, or any registry push tool.
+**OCI Image Layout** - An on-disk directory format defined by the OCI Image Spec. `justoci build` produces an OCI Image Layout v1.1 directory directly consumable by `oras pull`, `crane pull`, or any registry push tool.
 
 **production guarantee** - An invariant encoded in justoci's code and covered by at least one test that names the bug it would catch. See `docs/3-design/production_guarantees.md` for the full list.
 

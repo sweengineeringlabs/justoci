@@ -36,10 +36,10 @@ impl JustPipeline {
 
         let registry = crate::api::resolve_registry(&case);
 
-        if std::env::var("OCIMAGE_ALLOW_INSECURE").as_deref() != Ok("1") {
+        if std::env::var("JUSTOCI_ALLOW_INSECURE").as_deref() != Ok("1") {
             panic!(
-                "just-pipeline bench: OCIMAGE_ALLOW_INSECURE=1 is not set.\n\
-                 Run: OCIMAGE_ALLOW_INSECURE=1 cargo bench -p swe_justoci_bench --bench pipeline --features just-pipeline"
+                "just-pipeline bench: JUSTOCI_ALLOW_INSECURE=1 is not set.\n\
+                 Run: JUSTOCI_ALLOW_INSECURE=1 cargo bench -p swe_justoci_bench --bench pipeline --features just-pipeline"
             );
         }
 

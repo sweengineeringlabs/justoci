@@ -62,7 +62,7 @@ pub mod docker_config;
 
 /// One environment-variable name reused across the env provider.
 /// Mirrors the publish side's variable so an operator who configured
-/// `ocimage publish` keeps the same surface for `ocimage verify`.
+/// `justoci publish` keeps the same surface for `justoci verify`.
 const ENV_REGISTRY_TOKEN: &str = "REGISTRY_TOKEN";
 const ENV_REGISTRY_USERNAME: &str = "REGISTRY_USERNAME";
 const ENV_REGISTRY_PASSWORD: &str = "REGISTRY_PASSWORD";

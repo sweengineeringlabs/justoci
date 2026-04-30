@@ -156,10 +156,10 @@ sane defaults.
 
 ## OCI Distribution v2 providers
 
-Survey of providers `ocimage` can target, grouped by deployment
+Survey of providers `justoci` can target, grouped by deployment
 model. The OCI Distribution Spec v2 is a standard HTTP protocol;
-any compliant provider works as a destination for `ocimage
-publish` and a source for `ocimage verify`.
+any compliant provider works as a destination for `justoci
+publish` and a source for `justoci verify`.
 
 This is the universe of "places to put your artifacts." Pick one.
 
@@ -226,7 +226,7 @@ when the native endpoint is absent. Attestations get pushed under
 predictable tags like `<digest>.att`, and consumers list tags
 matching that pattern. Slower and racier than the native API.
 
-`ocimage verify` today uses the native API only. Issue #2
+`justoci verify` today uses the native API only. Issue #2
 (`--require-referrers` strict mode) escalates a 404 on the native
 endpoint to a hard error; the fallback path is on the v0.2
 roadmap.
@@ -235,7 +235,7 @@ roadmap.
 
 **ghcr.io.** Free, zero install, you already have a GitHub
 account. Auth via PAT with `write:packages` scope — set
-`REGISTRY_TOKEN` and run `ocimage publish ... --auth env`.
+`REGISTRY_TOKEN` and run `justoci publish ... --auth env`.
 
 If air-gapped or offline-only is a hard requirement, use the
 standalone `distribution/distribution` `registry` binary — same

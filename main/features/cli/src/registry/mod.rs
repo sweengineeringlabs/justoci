@@ -1,4 +1,4 @@
-//! Registry-pull machinery for `ocimage verify <registry-ref>`.
+//! Registry-pull machinery for `justoci verify <registry-ref>`.
 //!
 //! Module map:
 //!

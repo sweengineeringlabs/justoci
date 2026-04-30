@@ -4,7 +4,7 @@
 
 ## WHAT: Coverage and supported versions
 
-justoci is an OCI artifact build and verification pipeline. Its `ocimage verify` command is a security gate — a vulnerability that lets justoci return exit 0 for an artifact that should be rejected compromises every deploy pipeline that relies on that gate.
+justoci is an OCI artifact build and verification pipeline. Its `justoci verify` command is a security gate — a vulnerability that lets justoci return exit 0 for an artifact that should be rejected compromises every deploy pipeline that relies on that gate.
 
 ### Supported versions
 
@@ -18,11 +18,11 @@ justoci is pre-1.0. The supported version is the most recent published `0.x.y` r
 
 ### What's in scope
 
-- `ocimage verify` returning exit 0 for an artifact whose SLSA provenance, SBOM, or cosign signature should be rejected under any non-trivially-wrong policy.
+- `justoci verify` returning exit 0 for an artifact whose SLSA provenance, SBOM, or cosign signature should be rejected under any non-trivially-wrong policy.
 - `--require-referrers` being bypassable — a 404 on `/referrers/` escalating to a silent pass rather than exit 5.
 - Path traversal in `[[layers.files]]` source or dest paths allowing reads from or writes to locations outside the spec's intended scope.
 - Command injection via spec TOML fields that are passed verbatim to the cosign subprocess or sigstore-rs call path.
-- Digest acceptance bypass — `ocimage publish`, `ocimage verify`, or the CAS layer accepting a blob without re-hashing it against its expected digest.
+- Digest acceptance bypass — `justoci publish`, `justoci verify`, or the CAS layer accepting a blob without re-hashing it against its expected digest.
 - Auth credential leakage — registry tokens, Vault secrets, or docker-config credentials appearing in logs, error messages, or artifact metadata.
 - SLSA `builder_id` or SAN policy bypass in the verifier that allows a policy match to succeed when the actual claim doesn't satisfy the configured pattern.
 
@@ -37,7 +37,7 @@ justoci is pre-1.0. The supported version is the most recent published `0.x.y` r
 
 ## WHY: Why private disclosure matters
 
-A bypass in `ocimage verify` is silent — the pipeline reports success, the artifact deploys, and the supply-chain gap isn't visible until an incident occurs. Premature public disclosure of an unpatched bypass gives attackers a window to exploit pipelines before operators can upgrade.
+A bypass in `justoci verify` is silent — the pipeline reports success, the artifact deploys, and the supply-chain gap isn't visible until an incident occurs. Premature public disclosure of an unpatched bypass gives attackers a window to exploit pipelines before operators can upgrade.
 
 We triage reports privately, issue CVEs under coordinated disclosure, and document confirmed issues in a public advisory once operators have had time to upgrade.
 
@@ -69,7 +69,7 @@ Please include:
 | Patch released for confirmed high-severity issues | 30 days from confirmation |
 | Public advisory + CVE | Coordinated with reporter; default 90-day disclosure window |
 
-Severity is assessed on the verification surface: a policy bypass that allows an unsigned artifact to pass `ocimage verify --policy` is `Critical` regardless of the code change size.
+Severity is assessed on the verification surface: a policy bypass that allows an unsigned artifact to pass `justoci verify --policy` is `Critical` regardless of the code change size.
 
 ### Known pre-1.0 limitations
 
@@ -86,7 +86,7 @@ Reporters who choose public credit are acknowledged in the release notes of the 
 
 ## Summary
 
-justoci's `ocimage verify` is a security gate in production deploy pipelines; a silent bypass is more dangerous than a visible crash. Reports that allow an artifact to pass verification when it should not are treated as high or critical regardless of code change size. Disclose privately via GitHub Security Advisory or `engineers@swelabs.io`; expect acknowledgement within 3 business days.
+justoci's `justoci verify` is a security gate in production deploy pipelines; a silent bypass is more dangerous than a visible crash. Reports that allow an artifact to pass verification when it should not are treated as high or critical regardless of code change size. Disclose privately via GitHub Security Advisory or `engineers@swelabs.io`; expect acknowledgement within 3 business days.
 
 **Key takeaways**:
 1. Use the GitHub Security Advisory for private, structured disclosure — do not open a public issue.

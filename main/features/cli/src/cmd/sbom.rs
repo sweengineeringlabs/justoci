@@ -1,4 +1,4 @@
-//! `ocimage sbom <spec-or-ref> [-o <file>] [--format <cyclonedx|spdx>]`.
+//! `justoci sbom <spec-or-ref> [-o <file>] [--format <cyclonedx|spdx>]`.
 //!
 //! Two modes, auto-detected from the input path:
 //!
@@ -113,7 +113,7 @@ fn run_spec_mode(spec_path: &Path, format: SbomFormat) -> Result<Vec<u8>, CliErr
     // Manifest/config digests aren't yet known — use the spec hash
     // as a stable proxy so the SBOM document has a well-formed
     // identity. This is a *preview*; the real digests appear in
-    // the post-build SBOM at `ocimage sbom <built-dir>`.
+    // the post-build SBOM at `justoci sbom <built-dir>`.
     let manifest_proxy = canonical_hash.clone();
     let config_proxy = canonical_hash.clone();
 

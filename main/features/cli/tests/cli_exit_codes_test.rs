@@ -34,7 +34,7 @@ media_type = "application/vnd.x+binary"
     )
     .unwrap();
 
-    common::ocimage_bin()
+    common::oci_bin()
         .arg("build")
         .arg(&bad_spec)
         .arg("-o")
@@ -57,7 +57,7 @@ fn test_existing_output_dir_returns_exit_2_build_error() {
     let output_dir = tmp.path().join("oci-out");
     std::fs::create_dir_all(&output_dir).unwrap();
 
-    common::ocimage_bin()
+    common::oci_bin()
         .arg("build")
         .arg(&spec)
         .arg("-o")
@@ -113,7 +113,7 @@ sign.kind   = "cosign-keyless"
     .unwrap();
 
     let output_dir = tmp.path().join("out");
-    common::ocimage_bin()
+    common::oci_bin()
         .env_clear()
         .env("PATH", "")
         .arg("build")
@@ -136,7 +136,7 @@ fn test_publish_to_malformed_uri_returns_exit_64_cli_error() {
     let tmp = TempDir::new().expect("tempdir");
     let spec = common::stage_firmware_fixture(tmp.path());
     let image_dir = tmp.path().join("oci-out");
-    common::ocimage_bin()
+    common::oci_bin()
         .arg("build")
         .arg(&spec)
         .arg("-o")
@@ -145,7 +145,7 @@ fn test_publish_to_malformed_uri_returns_exit_64_cli_error() {
         .assert()
         .success();
 
-    common::ocimage_bin()
+    common::oci_bin()
         .arg("publish")
         .arg(&image_dir)
         .arg("--to")
@@ -165,7 +165,7 @@ fn test_publish_to_nonexistent_image_dir_returns_exit_4_publish_error() {
     let tmp = TempDir::new().expect("tempdir");
     let nonexistent: PathBuf = tmp.path().join("not-built-yet");
 
-    common::ocimage_bin()
+    common::oci_bin()
         .arg("publish")
         .arg(&nonexistent)
         .arg("--to")
@@ -179,13 +179,13 @@ fn test_publish_to_nonexistent_image_dir_returns_exit_4_publish_error() {
 #[cfg(not(feature = "vault"))]
 fn test_verify_auth_vault_without_feature_returns_exit_64_cli_error() {
     // Bug this catches: an operator who builds the default
-    // `ocimage` binary and tries `--auth vault` getting a confusing
+    // `justoci` binary and tries `--auth vault` getting a confusing
     // "unknown mode" message OR a silent fallthrough. The contract:
     // the build profile is the gate. Without the feature, we surface
     // a typed CliError telling the operator exactly what to rebuild.
     // Routing through 64 (CLI-local) means the operator's reaction
     // is "fix my invocation / build", not "retry the network."
-    common::ocimage_bin()
+    common::oci_bin()
         .arg("verify")
         .arg("ghcr.io/acme/img:v1")
         .arg("--auth")
@@ -206,7 +206,7 @@ fn test_verify_policy_violation_returns_exit_5() {
     let tmp = TempDir::new().expect("tempdir");
     let spec = common::stage_firmware_fixture_attested_no_sign(tmp.path());
     let image_dir = tmp.path().join("oci-out");
-    common::ocimage_bin()
+    common::oci_bin()
         .arg("build")
         .arg(&spec)
         .arg("-o")
@@ -227,7 +227,7 @@ required = false
     )
     .unwrap();
 
-    common::ocimage_bin()
+    common::oci_bin()
         .arg("verify")
         .arg(&image_dir)
         .arg("--policy")

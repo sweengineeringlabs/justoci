@@ -1,6 +1,6 @@
 # Dogfood: full pipeline against `registry:2`
 
-End-to-end smoke test that drives `ocimage` against a real OCI
+End-to-end smoke test that drives `justoci` against a real OCI
 Distribution v2 registry — Docker's `registry:2` image, run locally.
 This closes justoci issue #6.
 
@@ -10,10 +10,10 @@ The build → publish → verify loop works end-to-end against a real
 registry, on the real wire, over the real OCI Distribution v2
 protocol. Specifically:
 
-- `ocimage build --no-attest` produces a valid OCI Image Layout dir.
-- `ocimage publish --no-auth` HEAD-then-PUTs every blob, sends the
+- `justoci build --no-attest` produces a valid OCI Image Layout dir.
+- `justoci publish --no-auth` HEAD-then-PUTs every blob, sends the
   manifest last, and reports `pushed:` / `skipped:` counts honestly.
-- `ocimage verify --no-auth` pulls the artifact back into a tempdir
+- `justoci verify --no-auth` pulls the artifact back into a tempdir
   and walks the (empty, no-attest) pillar table without crashing.
 
 ## Why it exists
@@ -60,9 +60,9 @@ Exit code is 0 on success.
    container name on failure). The registry logs every request
    it serves; an unexpected 4xx points straight at the failing
    layer.
-2. Re-run with `RUST_LOG=debug` (or `OCIMAGE_LOG=debug`) to see
+2. Re-run with `RUST_LOG=debug` (or `JUSTOCI_LOG=debug`) to see
    the wire calls from the cli side.
-3. Confirm `OCIMAGE_ALLOW_INSECURE=1` is honoured — the script
+3. Confirm `JUSTOCI_ALLOW_INSECURE=1` is honoured — the script
    exports it, but if you copied a subset of commands by hand
    you'll see "https connection refused" without it.
 

@@ -38,7 +38,7 @@ fn env_lock() -> MutexGuard<'static, ()> {
 #[test]
 fn test_publish_registry_puts_manifest_after_all_blobs() {
     let _g = env_lock();
-    env::set_var("OCIMAGE_ALLOW_INSECURE", "1");
+    env::set_var("JUSTOCI_ALLOW_INSECURE", "1");
 
     let src = tempfile::tempdir().unwrap();
     let layout = Fixture::default().build(src.path());
@@ -121,7 +121,7 @@ fn test_publish_registry_puts_manifest_after_all_blobs() {
 #[test]
 fn test_publish_registry_blobs_complete_before_manifest_failure() {
     let _g = env_lock();
-    env::set_var("OCIMAGE_ALLOW_INSECURE", "1");
+    env::set_var("JUSTOCI_ALLOW_INSECURE", "1");
 
     let src = tempfile::tempdir().unwrap();
     let layout = Fixture::default().build(src.path());

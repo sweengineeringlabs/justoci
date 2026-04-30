@@ -129,7 +129,7 @@ cross-repo checkout step. The error is loud and obvious:
 - **`vault`** (in `cli/`). Opt-in HashiCorp Vault credential
   provider for `--auth vault`. Pulls in the `vaultrs` (MIT-licensed)
   + `tokio` deps; the default `cargo build` does NOT compile
-  either, keeping the default `ocimage` binary lean. Build with
+  either, keeping the default `justoci` binary lean. Build with
   `cargo build -p swe_justoci_oci_cli --features vault`. The
   feature's integration test (`cli/tests/vault_provider_test.rs`)
   is `#[ignore]`-gated and runs against a local Vault dev server;
@@ -157,7 +157,7 @@ cargo test --workspace                    # all tests
 cargo test -p swe_justoci_spec            # just the spec crate
 cargo test --workspace -- --ignored       # the cosign-installed
                                           # PATH probe (set
-                                          # OCIMAGE_COSIGN_BIN if
+                                          # JUSTOCI_COSIGN_BIN if
                                           # you want a different
                                           # binary)
 
@@ -244,7 +244,7 @@ bash examples/dogfood/run.sh
 ```
 
 It spins up Docker's `registry:2` on a free local port, runs
-`ocimage build → publish → verify` end-to-end (no-attest path),
+`justoci build → publish → verify` end-to-end (no-attest path),
 and tears the container down on exit. Exit code 0 + a final
 "dogfood passed" line means your build, the workspace, and the
 wire shape all agree.

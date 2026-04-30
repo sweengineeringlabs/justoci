@@ -19,7 +19,7 @@ tool serves end-to-end:
 - **Generic OCI artifacts** (oras-style — ML weights, Helm charts,
   WASM modules, bespoke binary blobs)
 
-For each kind, you write one TOML spec file and run `ocimage build`.
+For each kind, you write one TOML spec file and run `justoci build`.
 The output is a real OCI Image Layout v1.1 directory consumable by
 `oras pull`, `crane pull`, or any OCI distribution registry, with
 SLSA + SBOM + cosign attestations attached as OCI 1.1 referrers.
@@ -46,9 +46,9 @@ media_type = "application/vnd.devboard-x7.firmware+binary"
 ## What you run
 
 ```bash
-ocimage build   spec.toml -o dist/
-ocimage publish dist/ --to registry:ghcr.io/acme/firmware:1.4.2
-ocimage verify  ghcr.io/acme/firmware:1.4.2 --policy policy.toml
+justoci build   spec.toml -o dist/
+justoci publish dist/ --to registry:ghcr.io/acme/firmware:1.4.2
+justoci verify  ghcr.io/acme/firmware:1.4.2 --policy policy.toml
 ```
 
 Five subcommands total: `build`, `publish`, `verify`, `sbom`,
@@ -63,7 +63,7 @@ pipelines route on exit code, not stderr parsing.
 | `build`   | `swe_justoci_oci_build`       | `Spec` → OCI Image Layout v1.1. Streaming compression, deterministic tar, atomic.     |
 | `attest`  | `swe_justoci_attest`          | SLSA v1 provenance + CycloneDX/SPDX SBOM + cosign-with-Rekor. All as OCI referrers.  |
 | `publish` | `swe_justoci_oci_publish`     | HTTP sink + OCI Distribution v2 sink. HEAD-then-PUT idempotence, manifest-last commit. |
-| `cli`     | `swe_justoci_oci_cli`         | `ocimage` operator CLI. Five subcommands, typed exit codes.                          |
+| `cli`     | `swe_justoci_oci_cli`         | `justoci` operator CLI. Five subcommands, typed exit codes.                          |
 
 External: `cas` lives at the [`justcas`](../justcas) sibling repo
 (content-addressed-storage primitive — sha256 digests, atomic put,
