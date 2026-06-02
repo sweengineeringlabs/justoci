@@ -32,7 +32,7 @@ oci-publish = { path = "main/features/publish", package = "swe_justoci_oci_publi
 # Content-addressed storage primitive. Used by `spec` for the canonical
 # spec hash, and by every later crate (build, attest, publish) for layer
 # blobs, manifest digests, attestation referrers.
-cas = { path = "../justcas/cas", package = "swe_justcas_cas" }
+cas = { git = "ssh://git@github.com/sweengineeringlabs/justcas.git", tag = "v0.1.0", package = "swe_justcas_cas" }
 
 # ── Cross-repo sibling — swelabs/virtualization/justsign ──────────────────
 # Used ONLY when `attest` is built with `--features justsign` (the
